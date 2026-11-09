@@ -1,9 +1,8 @@
 {
-  "version": "1.4.0",
+  "version": "1.5.0",
   "date": "09/11/2026",
   "notes": [
-    "Svago e Studio sono ora tipologie",
-    "Ogni tipologia ha una forma (●, ▲, ■, ★, ✚, ◆, ⬢) indicata nella legenda",
-    "Ogni area della vita ha un colore, visibile in Sezioni e negli impegni del calendario"
+    "Svago e Studio tornano tra le aree della vita, ciascuna con il proprio colore",
+    "Le tipologie restano 5, ognuna con la sua forma in legenda"
   ]
 }

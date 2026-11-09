@@ -590,3 +590,11 @@ body { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 44px); }
 .typesel span, .day-quick button { position: relative; }
 .sh-badge { position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; opacity: .85; }
 .typesel span em { font-style: normal; }
+/* 5 tipologie */
+.typesel, .day-quick { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+@media (max-width: 559px) {
+  .typesel, .day-quick { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .typesel > label, .day-quick > button { grid-column: span 2 !important; }
+  .typesel > label:nth-child(n+4), .day-quick > button:nth-child(n+4) { grid-column: span 3 !important; }
+  .typesel span, .day-quick button { font-size: 12px; padding: 10px 4px 9px; letter-spacing: 0; }
+}

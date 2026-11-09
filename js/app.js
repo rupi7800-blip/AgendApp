@@ -96,11 +96,9 @@ const TYPES = {
   scadenza: { label: 'Scadenza', plural: 'Scadenze', icon: 'flag', desc: 'Termini da non dimenticare' },
   pagamento: { label: 'Pagamento', plural: 'Pagamenti', icon: 'euro', desc: 'Bollette, rate, abbonamenti' },
   compleanno: { label: 'Compleanno', plural: 'Compleanni', icon: 'cake', desc: 'Ricorrenze di chi ti sta a cuore' },
-  nota: { label: 'Nota', plural: 'Note', icon: 'note', desc: 'Appunti e promemoria' },
-  svago: { label: 'Svago', plural: 'Svago', icon: 'sun', desc: 'Uscite, gite, hobby, tempo libero' },
-  studio: { label: 'Studio', plural: 'Studio', icon: 'book', desc: 'Lezioni, esami, sessioni di studio' }
+  nota: { label: 'Nota', plural: 'Note', icon: 'note', desc: 'Appunti e promemoria' }
 };
-const TIMED = new Set(['appuntamento', 'svago', 'studio']);
+const TIMED = new Set(['appuntamento']);
 const TYPE_ORDER = Object.keys(TYPES);
 const CHECKABLE = new Set(['scadenza', 'pagamento', 'nota']);
 
@@ -110,14 +108,16 @@ const CATS = {
   salute: { label: 'Salute', icon: 'heart', color: '#e5484d' },
   mezzi: { label: 'Mezzi', icon: 'car', color: '#52637d' },
   casa: { label: 'Casa', icon: 'home', color: '#d08a0e' },
-  famiglia: { label: 'Famiglia e amici', icon: 'users', color: '#e0479e' },
+  famiglia: { label: 'Famiglia e amici', icon: 'users', color: '#f06595' },
+  svago: { label: 'Svago', icon: 'sun', color: '#0aa2c0' },
   sport: { label: 'Sport', icon: 'dumbbell', color: '#0d9488' },
+  studio: { label: 'Studio', icon: 'book', color: '#a21caf' },
   animali: { label: 'Animali', icon: 'paw', color: '#8d6e63' },
   finanze: { label: 'Finanze', icon: 'wallet', color: '#16a34a' },
   altro: { label: 'Altro', icon: 'dots', color: '#8a94a6' }
 };
 /* Ogni tipologia ha una forma (in legenda), ogni area un colore */
-const SHAPES = { appuntamento: 'circle', scadenza: 'triangle', pagamento: 'square', compleanno: 'star', nota: 'cross', svago: 'diamond', studio: 'hexagon' };
+const SHAPES = { appuntamento: 'circle', scadenza: 'triangle', pagamento: 'square', compleanno: 'star', nota: 'cross' };
 const SHAPE_SVG = {
   circle: '<circle cx="6" cy="6" r="5.2"/>',
   triangle: '<path d="M6 .4 11.8 11.4H.2z"/>',
@@ -183,7 +183,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -202,9 +202,7 @@ const DEF_SETTINGS = {
     scadenza: { style: 'full', reminders: [10080, 1440, 0], sound: true, vibrate: true },
     pagamento: { style: 'full', reminders: [4320, 0], sound: true, vibrate: true },
     compleanno: { style: 'full', reminders: [1440, 0], sound: true, vibrate: true },
-    nota: { style: 'banner', reminders: [0], sound: false, vibrate: false },
-    svago: { style: 'banner', reminders: [60], sound: true, vibrate: true },
-    studio: { style: 'full', reminders: [60, 15], sound: true, vibrate: true }
+    nota: { style: 'banner', reminders: [0], sound: false, vibrate: false }
   }
 };
 function blankState() { return { items: [], vehicles: [], dayNotes: {}, fired: {}, snoozes: [], log: [], settings: clone(DEF_SETTINGS) }; }
@@ -212,13 +210,11 @@ function migrate(raw) {
   const s = Object.assign(blankState(), raw || {});
   s.settings = Object.assign(clone(DEF_SETTINGS), s.settings || {});
   s.settings.defaults = Object.assign(clone(DEF_SETTINGS.defaults), s.settings.defaults || {});
+  delete s.settings.defaults.svago; delete s.settings.defaults.studio;
   ['items', 'vehicles', 'snoozes', 'log'].forEach(k => { if (!Array.isArray(s[k])) s[k] = []; });
   ['dayNotes', 'fired'].forEach(k => { if (!s[k] || typeof s[k] !== 'object') s[k] = {}; });
   s.items.forEach(it => {
-    if (it.category === 'svago' || it.category === 'studio') {
-      if (it.type === 'appuntamento') it.type = it.category;
-      it.category = 'personale';
-    }
+    if (it.type === 'svago' || it.type === 'studio') { it.category = it.type; it.type = 'appuntamento'; }
     it.done = it.done || {}; it.notify = it.notify || Object.assign({ enabled: true }, clone(s.settings.defaults[it.type] || DEF_SETTINGS.defaults.nota)); });
   return s;
 }
@@ -1242,8 +1238,8 @@ function loadDemo() {
     mk({ type: 'compleanno', date: D(9) }, { title: 'Mamma', category: 'famiglia', birthYear: String(t.getFullYear() - 68) }),
     mk({ type: 'scadenza', date: D(25) }, { title: 'Rinnovo carta d\'identità', category: 'personale', location: 'Comune' }),
     mk({ type: 'nota', date: D(0) }, { title: 'Comprare i regali', category: 'famiglia', notes: 'Lista: libro, sciarpa, cuffie' }),
-    mk({ type: 'svago', date: D(6) }, { title: 'Giro in MTB con gli amici', category: 'sport', time: '08:30', location: 'Parcheggio dei boschi' }),
-    mk({ type: 'studio', date: D(3) }, { title: 'Ripasso di anatomia', category: 'personale', time: '15:00', endTime: '17:00' }),
+    mk({ type: 'appuntamento', date: D(6) }, { title: 'Giro in MTB con gli amici', category: 'svago', time: '08:30', location: 'Parcheggio dei boschi' }),
+    mk({ type: 'appuntamento', date: D(3) }, { title: 'Ripasso di anatomia', category: 'studio', time: '15:00', endTime: '17:00' }),
     mk({ type: 'scadenza', date: D(20) }, { title: 'Manutenzione MTB', category: 'mezzi', vehicleId: bike.id, repeat: 'monthly6' })
   ];
   list.forEach(it => { it.created = Date.now() - 30 * 864e5; S.items.push(it); resetFired(it); });
