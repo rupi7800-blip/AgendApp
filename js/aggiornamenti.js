@@ -92,7 +92,8 @@
   function systemNotify() {
     if (!document.hidden || !('Notification' in window) || Notification.permission !== 'granted') return;
     var title = 'Aggiornamento disponibile';
-    var opts = { body: 'Versione ' + latest.version + ': apri l\'app e tocca "Aggiorna".', tag: 'app-update', icon: BASE + 'icons/icon-192.png' };
+    var ic = me && me.dataset.icon ? me.dataset.icon : (document.querySelector('link[rel="apple-touch-icon"]') || document.querySelector('link[rel~="icon"]') || {}).href;
+    var opts = { body: 'Versione ' + latest.version + ': apri l\'app e tocca "Aggiorna".', tag: 'app-update', icon: ic };
     if (navigator.serviceWorker && navigator.serviceWorker.controller) {
       navigator.serviceWorker.ready.then(function (r) { r.showNotification(title, opts); }).catch(function () {});
     } else { try { new Notification(title, opts); } catch (e) { /* no */ } }

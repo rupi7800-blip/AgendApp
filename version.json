@@ -1,9 +1,10 @@
 {
-  "version": "1.1.0",
+  "version": "1.1.1",
   "date": "09/11/2026",
   "notes": [
     "Importazione da Google Calendar e altri calendari (.ics e .zip)",
     "Sincronizzazione automatica con Google Calendar",
-    "Tasto Aggiorna e avviso quando esce una nuova versione"
+    "Tasto Aggiorna e avviso quando esce una nuova versione",
+    "Controllo aggiornamenti più leggero"
   ]
 }

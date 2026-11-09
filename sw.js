@@ -1,5 +1,5 @@
 /* AgendApp — service worker: funzionamento offline e clic sulle notifiche */
-const CACHE = 'agendapp-1.1.0';
+const CACHE = 'agendapp-1.1.1';
 const ASSETS = [
   './', './index.html', './css/style.css', './js/app.js', './manifest.webmanifest',
   './js/aggiornamenti.js', './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-32.png', './icons/icon-180.png'
@@ -20,6 +20,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
+  if (new URL(req.url).pathname.endsWith('version.json')) return; // controllo aggiornamenti: sempre dalla rete
   const url = new URL(req.url);
 
   // Font Google: cache-first

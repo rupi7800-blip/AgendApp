@@ -169,7 +169,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
