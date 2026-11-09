@@ -13,7 +13,8 @@
   var me = document.currentScript;
   var CURRENT = (me && me.dataset.version) || '0';
   var BASE = me && me.src ? me.src.replace(/[^/]*$/, '') : './';
-  var URL_V = BASE + 'version.json';
+  // version.json sta nella cartella della pagina (non in quella dello script)
+  var URL_V = new URL((me && me.dataset.versionUrl) || 'version.json', location.href.split('#')[0].split('?')[0]).href;
   var KEY = 'upd.dismissed.' + location.pathname;
   var latest = null, btn = null, shown = false;
 
@@ -122,22 +123,26 @@
     busy.className = 'upd-busy';
     busy.textContent = 'Aggiornamento in corso…';
     document.body.appendChild(busy);
-    // 1) rinfresca nella cache del browser tutti i file dell'app
-    var urls = [location.href.split('#')[0], URL_V];
+    // 1) svuota le copie salvate della versione vecchia
+    var clear = window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : Promise.resolve();
+    // 2) scarica di nuovo dalla rete tutti i file dell'app (pagina, script, stili, icone)
+    var page = location.href.split('#')[0].split('?')[0];
+    var urls = [page, new URL('index.html', page).href];
     Array.prototype.forEach.call(document.querySelectorAll('script[src],link[href]'), function (el) {
       var u = el.src || el.href;
       if (u && u.indexOf(location.origin) === 0) urls.push(u);
     });
-    var refresh = Promise.all(urls.map(function (u) { return fetch(u, { cache: 'reload' }).catch(function () {}); }));
-    // 2) svuota le cache del service worker e attiva quello nuovo
-    var clear = window.caches ? caches.keys().then(function (k) { return Promise.all(k.map(function (n) { return caches.delete(n); })); }) : Promise.resolve();
+    var refresh = clear.then(function () {
+      return Promise.all(urls.map(function (u) { return fetch(u, { cache: 'reload' }).catch(function () {}); }));
+    });
+    // 3) attiva l'eventuale service worker nuovo
     var sw = navigator.serviceWorker ? navigator.serviceWorker.getRegistration().then(function (reg) {
       if (!reg) return;
       return reg.update().catch(function () {}).then(function () {
         if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
       });
     }).catch(function () {}) : Promise.resolve();
-    Promise.all([refresh, clear, sw]).then(function () {
+    Promise.all([refresh, sw]).then(function () {
       try { localStorage.removeItem(KEY); } catch (e) { /* no */ }
       setTimeout(function () { location.reload(); }, 300);
     });

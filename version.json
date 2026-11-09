@@ -1,8 +1,8 @@
 {
-  "version": "1.5.0",
+  "version": "1.6.0",
   "date": "09/11/2026",
   "notes": [
-    "Svago e Studio tornano tra le aree della vita, ciascuna con il proprio colore",
-    "Le tipologie restano 5, ognuna con la sua forma in legenda"
+    "Corretto il controllo degli aggiornamenti: ora il tasto Aggiorna compare quando esce una nuova versione",
+    "L'app resta sulla versione installata finché non premi Aggiorna"
   ]
 }

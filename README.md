@@ -44,7 +44,7 @@ Con l'app completamente chiusa il browser non può svegliarla da solo: per quel 
 
 ## Pubblicare un aggiornamento
 
-Aumentare lo stesso numero di versione in tre punti: `version.json`, `data-version` di `js/aggiornamenti.js` in `index.html`, `CACHE` in `sw.js` (e `APP_VERSION` in `js/app.js`).
+Aumentare lo stesso numero di versione in `version.json`, in `data-version` di `js/aggiornamenti.js` dentro `index.html` e in `APP_VERSION` di `js/app.js`. Non serve toccare `sw.js`: l'app resta sulla versione installata finché l'utente non preme **Aggiorna**.
 
 ## Struttura
 
