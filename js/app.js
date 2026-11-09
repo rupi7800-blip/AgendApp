@@ -169,7 +169,15 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
+const APP_VERSION = '1.1.0';
 const KEY = 'agendapp.v1';
+function relTime(ts) {
+  const m = Math.round((Date.now() - ts) / 60000);
+  if (m < 1) return 'adesso';
+  if (m < 60) return `${m} min fa`;
+  if (m < 1440) return `${Math.round(m / 60)} ore fa`;
+  return new Date(ts).toLocaleDateString('it-IT');
+}
 const DEF_SETTINGS = {
   theme: 'auto',
   startView: 'month',
@@ -427,6 +435,8 @@ function rowHtml(it, occ, o = {}) {
   if (it.vehicleId && getVeh(it.vehicleId)) meta.push(`<span>${I(VTYPES[getVeh(it.vehicleId).type].icon)}${esc(getVeh(it.vehicleId).name)}</span>`);
   if (it.location) meta.push(`<span>${I('pin')}${esc(it.location)}</span>`);
   if (it.repeat && it.repeat !== 'none' && it.type !== 'compleanno') meta.push(`<span>${I('repeat')}${repLabel(it.repeat)}</span>`);
+  if (it.source === 'google') meta.push(`<span>${I('repeat')}Google${it.calName ? ' · ' + esc(it.calName) : ''}</span>`);
+  else if (it.source === 'ics' && it.calName) meta.push(`<span>${I('download')}${esc(it.calName)}</span>`);
   if (!it.notify || !it.notify.enabled) meta.push(`<span>${I('belloff')}</span>`);
   const side = [];
   if (it.type === 'pagamento' && it.amount) side.push(`<span class="amount">${EUR.format(it.amount)}</span>`);
@@ -616,6 +626,11 @@ function settingsView() {
     <p class="hint" style="margin:2px 0 4px">Valgono per i nuovi elementi. Ogni appuntamento, scadenza o compleanno si può poi personalizzare singolarmente.</p>
     ${defs}
   </div>
+  <div class="card"><h3>Importa da altri calendari</h3>
+    <div class="set-row"><div class="lbl">Google Calendar<small>${S.settings.gsync && S.settings.gsync.url ? (S.settings.gsync.error ? '<span class="danger">Errore: ' + esc(S.settings.gsync.error) + '</span>' : 'Collegato' + (S.settings.gsync.last ? ' · aggiornato ' + relTime(S.settings.gsync.last) : '')) : 'Sincronizzazione automatica dei tuoi calendari Google'}</small></div>
+      ${S.settings.gsync && S.settings.gsync.url ? `<button class="btn sm" data-act="gs-sync" aria-label="Sincronizza ora">${I('repeat')}</button>` : ''}<button class="btn sm" data-act="google-open">${S.settings.gsync && S.settings.gsync.url ? 'Gestisci' : 'Collega'}</button></div>
+    <div class="set-row"><div class="lbl">File di calendario (.ics o .zip)<small>Da Google (Impostazioni → Importa ed esporta → Esporta), Apple, Outlook, Samsung e altri</small></div><button class="btn sm" data-act="import-ics">${I('upload')}Importa</button></div>
+  </div>
   <div class="card"><h3>Dati</h3>
     <div class="set-row"><div class="lbl">Backup completo<small>Salva un file con tutti i tuoi dati</small></div><button class="btn sm" data-act="export">${I('download')}Esporta</button></div>
     <div class="set-row"><div class="lbl">Ripristina da backup</div><button class="btn sm" data-act="import">${I('upload')}Importa</button></div>
@@ -623,7 +638,10 @@ function settingsView() {
     <div class="set-row"><div class="lbl">Dati di esempio</div><button class="btn sm" data-act="demo">${I('sparkle')}Carica</button></div>
     <div class="set-row"><div class="lbl danger">Cancella tutti i dati</div><button class="btn sm danger" data-act="wipe">${I('trash')}Cancella</button></div>
   </div>
-  <p class="hint" style="text-align:center;margin:8px 0 20px">AgendApp 1.0 · I dati restano su questo dispositivo</p>`;
+  <div class="card"><h3>App</h3>
+    <div class="set-row"><div class="lbl">Versione ${APP_VERSION}<small>Quando esce una nuova versione compare il tasto “Aggiorna” in alto</small></div><button class="btn sm" data-act="check-update">${I('repeat')}Cerca aggiornamenti</button></div>
+  </div>
+  <p class="hint" style="text-align:center;margin:8px 0 20px">AgendApp ${APP_VERSION} · I dati restano su questo dispositivo</p>`;
 }
 
 /* ---------------- Fogli (sheet) ---------------- */
@@ -1206,6 +1224,298 @@ function loadDemo() {
   toast('Esempi caricati');
 }
 
+/* ---------------- Importazione da altri calendari (.ics / .zip) ---------------- */
+function icsUnesc(s) { return String(s || '').replace(/\\n/gi, '\n').replace(/\\([,;\\])/g, '$1'); }
+function icsDate(val, P) {
+  if ((P && P.VALUE === 'DATE') || /^\d{8}$/.test(val)) return { date: `${val.slice(0, 4)}-${val.slice(4, 6)}-${val.slice(6, 8)}`, allDay: true };
+  const m = /^(\d{4})(\d\d)(\d\d)T(\d\d)(\d\d)(\d\d)?(Z)?$/.exec(val);
+  if (!m) return null;
+  const d = m[7] ? new Date(Date.UTC(+m[1], m[2] - 1, +m[3], +m[4], +m[5])) : new Date(+m[1], m[2] - 1, +m[3], +m[4], +m[5]);
+  return { date: ds(d), time: `${pad(d.getHours())}:${pad(d.getMinutes())}`, allDay: false };
+}
+function icsDur(v) { // restituisce i minuti di anticipo (>= 0)
+  const m = /^([+-])?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(v.trim());
+  if (!m) return null;
+  const tot = ((+m[2] || 0) * 7 * 1440) + ((+m[3] || 0) * 1440) + ((+m[4] || 0) * 60) + (+m[5] || 0);
+  return m[1] === '-' ? tot : 0;
+}
+function parseICS(text) {
+  const lines = text.replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n');
+  const events = [];
+  let cur = null, alarm = null, calName = '';
+  for (const raw of lines) {
+    const i = raw.indexOf(':');
+    if (i < 0) continue;
+    const left = raw.slice(0, i), val = raw.slice(i + 1);
+    const [nm, ...ps] = left.split(';');
+    const N = nm.toUpperCase(), P = {};
+    ps.forEach(p => { const j = p.indexOf('='); if (j > 0) P[p.slice(0, j).toUpperCase()] = p.slice(j + 1).replace(/"/g, ''); });
+    if (N === 'BEGIN' && val === 'VEVENT') { cur = { alarms: [] }; continue; }
+    if (N === 'END' && val === 'VEVENT') { if (cur) events.push(cur); cur = null; continue; }
+    if (!cur) { if (N === 'X-WR-CALNAME') calName = icsUnesc(val); continue; }
+    if (N === 'BEGIN' && val === 'VALARM') { alarm = {}; continue; }
+    if (N === 'END' && val === 'VALARM') { if (alarm && alarm.t != null) cur.alarms.push(alarm.t); alarm = null; continue; }
+    if (alarm) { if (N === 'TRIGGER' && P.VALUE !== 'DATE-TIME') alarm.t = icsDur(val); continue; }
+    if (N === 'UID') cur.uid = val;
+    else if (N === 'SUMMARY') cur.summary = icsUnesc(val);
+    else if (N === 'DESCRIPTION') cur.desc = icsUnesc(val);
+    else if (N === 'LOCATION') cur.loc = icsUnesc(val);
+    else if (N === 'DTSTART') cur.start = icsDate(val, P);
+    else if (N === 'DTEND') cur.end = icsDate(val, P);
+    else if (N === 'RRULE') { cur.rrule = {}; val.split(';').forEach(kv => { const [k, v] = kv.split('='); cur.rrule[k.toUpperCase()] = v; }); }
+    else if (N === 'RECURRENCE-ID') cur.recId = true;
+    else if (N === 'STATUS') cur.status = val.toUpperCase();
+  }
+  return { calName, events };
+}
+async function unzipICS(buf) {
+  const dv = new DataView(buf), dec = new TextDecoder();
+  let e = buf.byteLength - 22;
+  while (e >= 0 && dv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error('zip non valido');
+  const n = dv.getUint16(e + 10, true);
+  let p = dv.getUint32(e + 16, true);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    if (dv.getUint32(p, true) !== 0x02014b50) break;
+    const method = dv.getUint16(p + 10, true), csize = dv.getUint32(p + 20, true), nlen = dv.getUint16(p + 28, true),
+      xlen = dv.getUint16(p + 30, true), clen = dv.getUint16(p + 32, true), lho = dv.getUint32(p + 42, true);
+    const name = dec.decode(new Uint8Array(buf, p + 46, nlen));
+    p += 46 + nlen + xlen + clen;
+    if (!/\.ics$/i.test(name)) continue;
+    const start = lho + 30 + dv.getUint16(lho + 26, true) + dv.getUint16(lho + 28, true);
+    const data = new Uint8Array(buf, start, csize);
+    let bytes;
+    if (method === 0) bytes = data;
+    else if (method === 8 && 'DecompressionStream' in window) {
+      bytes = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer());
+    } else continue;
+    out.push({ name: name.split('/').pop(), text: dec.decode(bytes) });
+  }
+  return out;
+}
+const BDAY_RE = /compleann|birthday|geburtstag|cumplea|anniversaire/i;
+function cleanBdayTitle(t) {
+  return (t || '').replace(/^\s*(🎂\s*)?(compleanno( di)?|birthday( of)?|buon compleanno)\s*/i, '').replace(/['’]s birthday$/i, '').trim() || t;
+}
+const RR_MAP = { DAILY: { 1: 'daily' }, WEEKLY: { 1: 'weekly', 2: 'weekly2' }, MONTHLY: { 1: 'monthly', 2: 'monthly2', 3: 'monthly3', 6: 'monthly6' }, YEARLY: { 1: 'yearly', 2: 'yearly2' } };
+const WD_ICS = { MO: 0, TU: 1, WE: 2, TH: 3, FR: 4, SA: 5, SU: 6 };
+function icsEventToItems(ev, o) {
+  if (!ev.start || ev.recId || ev.status === 'CANCELLED') return [];
+  const rr = ev.rrule;
+  const bday = BDAY_RE.test(ev.summary || '');
+  const type = o.type === 'auto' ? (bday ? 'compleanno' : 'appuntamento') : o.type;
+  let repeat = 'none', until = '';
+  if (rr && RR_MAP[rr.FREQ]) {
+    const n = +(rr.INTERVAL || 1);
+    repeat = RR_MAP[rr.FREQ][n] || RR_MAP[rr.FREQ][1];
+    if (rr.UNTIL) { const u = icsDate(rr.UNTIL, {}); if (u) until = u.date; }
+  }
+  const base = newItem({ type, date: ev.start.date, category: o.category });
+  Object.assign(base, {
+    title: (type === 'compleanno' ? cleanBdayTitle(ev.summary) : ev.summary) || '(senza titolo)',
+    allDay: ev.start.allDay || type === 'compleanno', time: ev.start.allDay ? '' : ev.start.time,
+    endTime: !ev.start.allDay && ev.end && ev.end.date === ev.start.date && type === 'appuntamento' ? ev.end.time : '',
+    location: ev.loc || '', notes: (ev.desc || '').slice(0, 3000),
+    repeat: type === 'compleanno' ? 'yearly' : repeat, until,
+    extUid: `${o.prefix}${ev.uid || ev.summary + ev.start.date}`, source: o.source, calName: o.calName || ''
+  });
+  if (ev.alarms.length) base.notify.reminders = [...new Set(ev.alarms)].sort((a, b) => b - a);
+  if (rr && rr.COUNT && repeat !== 'none') {
+    const occ = expand(base, pd(base.date), addDays(pd(base.date), 3660));
+    const c = +rr.COUNT;
+    if (occ[c - 1]) base.until = occ[c - 1];
+  }
+  let items = [base];
+  if (rr && rr.FREQ === 'WEEKLY' && rr.BYDAY && rr.BYDAY.includes(',')) {
+    items = rr.BYDAY.split(',').map(code => {
+      const w = WD_ICS[code.replace(/^[+-]?\d+/, '')];
+      if (w == null) return null;
+      const c = clone(base);
+      const st = pd(base.date);
+      c.date = ds(addDays(st, (w - wd(st) + 7) % 7));
+      c.id = uid(); c.extUid = base.extUid + '#' + code;
+      return c;
+    }).filter(Boolean);
+  }
+  if (o.skipPast) {
+    const lim = ds(addDays(todayD(), -1));
+    items = items.filter(it => {
+      if (it.type === 'compleanno') return true;
+      if (it.repeat === 'none') return it.date >= lim;
+      return !it.until || it.until >= lim;
+    });
+  }
+  return items;
+}
+function mergeItems(items) {
+  let added = 0, updated = 0;
+  for (const it of items) {
+    const ex = it.extUid && S.items.find(x => x.extUid === it.extUid);
+    if (ex) {
+      // aggiorna i dati ma conserva le scelte fatte in AgendApp (tipo, sezione, notifiche, spunte)
+      Object.assign(ex, { title: it.title, date: it.date, allDay: it.allDay, time: it.time, endTime: it.endTime, location: it.location, notes: it.notes, repeat: ex.type === 'compleanno' ? 'yearly' : it.repeat, until: it.until, calName: it.calName });
+      resetFired(ex); updated++;
+    } else { S.items.push(it); resetFired(it); added++; }
+  }
+  return { added, updated };
+}
+function pickCalendarFiles() {
+  const inp = document.createElement('input');
+  inp.type = 'file'; inp.multiple = true;
+  inp.accept = '.ics,.ical,.ifb,.zip,text/calendar,application/zip';
+  inp.onchange = async () => {
+    const files = [...inp.files];
+    if (!files.length) return;
+    const cals = [];
+    try {
+      for (const f of files) {
+        if (/\.zip$/i.test(f.name) || f.type.includes('zip')) {
+          for (const e of await unzipICS(await f.arrayBuffer())) cals.push({ file: e.name, ...parseICS(e.text) });
+        } else cals.push({ file: f.name, ...parseICS(await f.text()) });
+      }
+    } catch (e) { toast('Impossibile leggere il file'); return; }
+    const valid = cals.filter(c => c.events.length);
+    if (!valid.length) { toast('Nessun evento trovato nel file'); return; }
+    openImportSheet(valid);
+  };
+  inp.click();
+}
+function openImportSheet(cals) {
+  const label = c => c.calName || c.file.replace(/\.ics$/i, '').replace(/_[a-z0-9.@-]+$/i, '');
+  openSheet({
+    build: () => ({
+      title: 'Importa calendario<span class="sub">Trovati ' + cals.reduce((a, c) => a + c.events.length, 0) + ' eventi</span>',
+      body: `<form id="impform">
+        <div class="field"><span class="flabel">Calendari da importare</span>
+          ${cals.map((c, i) => `<div class="inline-sw"><span style="white-space:normal">${esc(label(c))} <small style="color:var(--muted)">· ${c.events.length} eventi</small></span><label class="switch"><input type="checkbox" name="cal" value="${i}" checked><span></span></label></div>`).join('')}
+        </div>
+        <div class="grid2">
+          <div class="field"><label for="imp-type">Importa come</label><select class="inp" id="imp-type" name="type"><option value="auto">Automatico</option>${TYPE_ORDER.map(t => `<option value="${t}">${TYPES[t].plural}</option>`).join('')}</select></div>
+          <div class="field"><label for="imp-cat">Sezione</label><select class="inp" id="imp-cat" name="category">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${k === 'personale' ? 'selected' : ''}>${c.label}</option>`).join('')}</select></div>
+        </div>
+        <p class="hint" style="margin:-6px 0 12px">“Automatico”: i compleanni diventano Compleanni, il resto Appuntamenti. Ripetizioni e promemoria vengono mantenuti; se importi di nuovo lo stesso file gli eventi vengono aggiornati, non duplicati.</p>
+        <div class="inline-sw"><span>Salta gli eventi già passati</span><label class="switch"><input type="checkbox" name="skipPast" checked><span></span></label></div>
+      </form>`,
+      foot: `<div class="btns"><span class="grow"></span><button class="btn" data-act="sheet-close">Annulla</button><button class="btn primary" data-act="import-run">${I('download')}Importa</button></div>`
+    }),
+    mount(w, sh) {
+      sh.run = () => {
+        const fd = new FormData($('#impform', w));
+        const pick = fd.getAll('cal').map(Number);
+        if (!pick.length) { toast('Seleziona almeno un calendario'); return; }
+        let items = [];
+        for (const i of pick) {
+          const c = cals[i];
+          const o = { type: fd.get('type'), category: fd.get('category'), skipPast: fd.get('skipPast') === 'on', prefix: 'ics:', source: 'ics', calName: label(c) };
+          c.events.forEach(ev => { items = items.concat(icsEventToItems(ev, o)); });
+        }
+        const r = mergeItems(items);
+        save(); closeSheet(); refreshAll();
+        toast(`Importati ${r.added} eventi${r.updated ? `, ${r.updated} aggiornati` : ''}`);
+      };
+    }
+  });
+}
+
+/* ---------------- Sincronizzazione Google Calendar (Apps Script) ---------------- */
+const gs = () => S.settings.gsync || (S.settings.gsync = { url: '', key: '', category: 'personale', auto: true, excluded: [], calendars: [], last: 0, error: '' });
+let syncing = false;
+async function syncGoogle(manual) {
+  const g = gs();
+  if (!g.url) { if (manual) toast('Inserisci prima l\'indirizzo dello script'); return; }
+  if (syncing) return;
+  syncing = true;
+  if (manual) toast('Sincronizzazione in corso…');
+  try {
+    const u = g.url + (g.url.includes('?') ? '&' : '?') + 'k=' + encodeURIComponent(g.key || '') + '&t=' + Date.now();
+    const r = await fetch(u, { redirect: 'follow' });
+    const data = await r.json();
+    if (data.error) throw new Error(data.error === 'chiave non valida' ? 'Chiave non valida' : data.error);
+    const ex = new Set(g.excluded || []), seen = new Set();
+    const items = [];
+    for (const ev of data.events || []) {
+      if (ex.has(ev.cal)) continue;
+      const allDay = !!ev.allDay;
+      const sd = ev.start.slice(0, 10), st = allDay ? '' : ev.start.slice(11, 16);
+      const bday = BDAY_RE.test(ev.title || '');
+      const type = bday ? 'compleanno' : 'appuntamento';
+      const it = newItem({ type, date: sd, category: g.category || 'personale' });
+      Object.assign(it, {
+        title: (bday ? cleanBdayTitle(ev.title) : ev.title) || '(senza titolo)', allDay: allDay || bday, time: bday ? '' : st,
+        endTime: !allDay && !bday && ev.end && ev.end.slice(0, 10) === sd ? ev.end.slice(11, 16) : '',
+        location: ev.loc || '', notes: (ev.desc || '').replace(/<[^>]+>/g, ' ').slice(0, 3000),
+        repeat: 'none', extUid: 'g:' + ev.id, source: 'google', calName: ev.calName || ''
+      });
+      if (Array.isArray(ev.reminders) && ev.reminders.length) it.notify.reminders = [...new Set(ev.reminders.map(Number))].sort((a, b) => b - a);
+      seen.add(it.extUid);
+      items.push(it);
+    }
+    const res = mergeItems(items);
+    // elimina gli eventi cancellati su Google (solo nell'intervallo sincronizzato)
+    const from = ds(addDays(todayD(), -30)), to = ds(addDays(todayD(), 365));
+    const before = S.items.length;
+    S.items = S.items.filter(i => !(i.source === 'google' && !seen.has(i.extUid) && i.date >= from && i.date <= to));
+    const removed = before - S.items.length;
+    g.calendars = data.calendars || [];
+    g.last = Date.now(); g.error = '';
+    save(); refreshAll();
+    if (manual) toast(`Google Calendar aggiornato: ${res.added} nuovi, ${res.updated} aggiornati${removed ? `, ${removed} rimossi` : ''}`);
+  } catch (e) {
+    g.error = (e && e.message) || 'errore';
+    save();
+    if (manual) { toast('Sincronizzazione non riuscita: ' + g.error); refreshAll(); }
+  } finally { syncing = false; }
+}
+function autoSync() {
+  const g = S.settings.gsync;
+  if (g && g.url && g.auto && navigator.onLine && Date.now() - (g.last || 0) > 30 * 60 * 1000) syncGoogle(false);
+}
+function openGoogleSheet() {
+  const g = gs();
+  openSheet({
+    build: () => ({
+      title: 'Google Calendar<span class="sub">' + (g.last ? 'Ultima sincronizzazione: ' + new Date(g.last).toLocaleString('it-IT', { dateStyle: 'short', timeStyle: 'short' }) : 'Non ancora collegato') + '</span>',
+      body: `<div class="notif-box" style="padding:12px 14px">
+          <div class="nb-head" style="padding-top:0">${I('sparkle')}<span class="grow">Come collegarlo (una sola volta, da computer)</span></div>
+          <ol class="hint" style="padding-left:18px;margin:0;font-size:13.5px;color:var(--ink-2)">
+            <li>Apri <b>script.google.com</b> con il tuo account Google → <b>Nuovo progetto</b>.</li>
+            <li>Incolla il codice dello script (tasto qui sotto) e cambia la <b>CHIAVE</b> con una parola segreta.</li>
+            <li>Esegui la funzione <b>prova</b> e concedi l'accesso al calendario.</li>
+            <li><b>Pubblica → Nuovo deployment → App web</b>: “Esegui come: Me”, “Chi ha accesso: Chiunque”.</li>
+            <li>Copia l'URL dell'app web e incollalo qui con la stessa chiave.</li>
+          </ol>
+          <div class="btns" style="margin-top:10px"><button class="btn sm" data-act="gs-copy">${I('note')}Copia codice script</button></div>
+        </div>
+        <form id="gsform">
+          <div class="field"><label for="gs-url">URL dell'app web</label><input class="inp" id="gs-url" name="url" value="${esc(g.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>
+          <div class="grid2">
+            <div class="field"><label for="gs-key">Chiave</label><input class="inp" id="gs-key" name="key" value="${esc(g.key)}" autocomplete="off"></div>
+            <div class="field"><label for="gs-cat">Sezione</label><select class="inp" id="gs-cat" name="category">${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${g.category === k ? 'selected' : ''}>${c.label}</option>`).join('')}</select></div>
+          </div>
+          <div class="inline-sw"><span>Sincronizza automaticamente</span><label class="switch"><input type="checkbox" name="auto" ${g.auto ? 'checked' : ''}><span></span></label></div>
+          ${g.calendars && g.calendars.length ? `<div class="field" style="margin-top:8px"><span class="flabel">Calendari</span>${g.calendars.map(c => `<div class="inline-sw"><span style="white-space:normal"><i style="display:inline-block;width:10px;height:10px;border-radius:3px;background:${esc(c.color || '#888')};margin-right:6px"></i>${esc(c.name)}</span><label class="switch"><input type="checkbox" name="cal" value="${esc(c.id)}" ${(g.excluded || []).includes(c.id) ? '' : 'checked'}><span></span></label></div>`).join('')}</div>` : ''}
+          ${g.error ? `<p class="hint" style="color:var(--red)">Ultimo errore: ${esc(g.error)}</p>` : ''}
+          <p class="hint">Gli eventi di Google arrivano in AgendApp (ultimi 30 giorni e prossimi 12 mesi). Titolo, data e luogo si modificano su Google; in AgendApp puoi personalizzare notifiche, tipologia e sezione.</p>
+        </form>`,
+      foot: `<div class="btns">${g.url ? `<button class="btn danger" data-act="gs-unlink">Scollega</button>` : ''}<span class="grow"></span><button class="btn primary" data-act="gs-save">${I('repeat')}Salva e sincronizza</button></div>`
+    }),
+    mount(w, sh) {
+      sh.saveG = () => {
+        const f = $('#gsform', w), fd = new FormData(f);
+        g.url = (fd.get('url') || '').trim();
+        g.key = (fd.get('key') || '').trim();
+        g.category = fd.get('category');
+        g.auto = fd.get('auto') === 'on';
+        if (g.calendars && g.calendars.length) { const on = new Set(fd.getAll('cal')); g.excluded = g.calendars.map(c => c.id).filter(id => !on.has(id)); }
+        if (g.url && !/^https:\/\/script\.google(usercontent)?\.com\//.test(g.url)) { toast('L\'URL deve iniziare con https://script.google.com/'); return; }
+        save(); closeSheet();
+        if (g.url) syncGoogle(true); else refreshAll();
+      };
+    }
+  });
+}
+
 /* ---------------- Gestione eventi ---------------- */
 const ACT = {
   tab: el => { ui.tab = el.dataset.tab; if (ui.tab !== 'sec') ui.section = null; render(); window.scrollTo(0, 0); },
@@ -1295,6 +1605,29 @@ const ACT = {
     alertQueue.unshift({ key: 'test', item: it, occ: ds(todayD()) });
     pump();
   },
+  'import-ics': () => pickCalendarFiles(),
+  'import-run': () => { const s = sheets[sheets.length - 1]; s && s.run && s.run(); },
+  'google-open': () => openGoogleSheet(),
+  'gs-save': () => { const s = sheets[sheets.length - 1]; s && s.saveG && s.saveG(); },
+  'gs-sync': () => syncGoogle(true),
+  'gs-copy': async () => {
+    try {
+      const code = await (await fetch('google/AgendAppSync.gs', { cache: 'no-cache' })).text();
+      await navigator.clipboard.writeText(code);
+      toast('Codice copiato: incollalo su script.google.com');
+    } catch (e) { window.open('google/AgendAppSync.gs', '_blank'); }
+  },
+  'gs-unlink': () => {
+    const n = S.items.filter(i => i.source === 'google').length;
+    const del = n && confirm(`Scollegare Google Calendar. Vuoi eliminare anche i ${n} eventi importati da Google?`);
+    if (del) S.items = S.items.filter(i => i.source !== 'google');
+    S.settings.gsync = null;
+    save(); closeSheet(); refreshAll(); toast('Google Calendar scollegato');
+  },
+  'check-update': () => {
+    if (!window.AppUpdate) { toast('Controllo aggiornamenti non disponibile'); return; }
+    window.AppUpdate.check().then(found => { if (!found) toast(`Hai già l'ultima versione (${APP_VERSION})`); });
+  },
   export: exportJSON,
   import: importJSON,
   ics: exportICS,
@@ -1365,7 +1698,8 @@ applyTheme();
 render();
 setTimeout(checkReminders, 800);
 setInterval(checkReminders, 15000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderChrome(); } });
+document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderChrome(); autoSync(); } });
+setTimeout(autoSync, 1500);
 // a mezzanotte aggiorna la vista "oggi"
 let lastDay = ds(todayD());
 setInterval(() => { const d = ds(todayD()); if (d !== lastDay) { lastDay = d; render(); } }, 60000);

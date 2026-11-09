@@ -1,8 +1,8 @@
 /* AgendApp — service worker: funzionamento offline e clic sulle notifiche */
-const CACHE = 'agendapp-v1';
+const CACHE = 'agendapp-1.1.0';
 const ASSETS = [
   './', './index.html', './css/style.css', './js/app.js', './manifest.webmanifest',
-  './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-32.png', './icons/icon-180.png'
+  './js/aggiornamenti.js', './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-32.png', './icons/icon-180.png'
 ];
 
 self.addEventListener('install', e => {
@@ -37,13 +37,17 @@ self.addEventListener('fetch', e => {
   // File dell'app: rete prima (così gli aggiornamenti arrivano), cache se offline
   if (url.origin === self.location.origin) {
     e.respondWith(
-      fetch(req).then(res => {
+      fetch(req, { cache: 'no-cache' }).then(res => {
         const copy = res.clone();
         caches.open(CACHE).then(c => c.put(req, copy));
         return res;
       }).catch(() => caches.match(req).then(hit => hit || caches.match('./index.html')))
     );
   }
+});
+
+self.addEventListener('message', e => {
+  if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('notificationclick', e => {

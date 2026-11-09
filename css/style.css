@@ -524,3 +524,8 @@ textarea.inp { resize: vertical; min-height: 84px; line-height: 1.45; }
 .typesel span, .day-quick button { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .inline-sw > span:first-child { white-space: nowrap; }
 .day-notes textarea { padding-top: 0; background-position: 0 -1px; }
+
+/* Tasto Aggiorna nell'intestazione */
+.top-actions { align-items: center; }
+.top-actions .upd-btn { order: -1; padding: 8px 12px; font-size: 13px; margin-right: 2px; }
+@media (max-width: 400px) { .top-actions .upd-btn span { display: none; } .top-actions .upd-btn { padding: 9px; } }

@@ -22,6 +22,9 @@ Funziona nel browser e si installa sul telefono come una vera app (PWA), anche o
 - **Centro notifiche** con lo storico degli avvisi.
 - **Prossimi impegni**: riepilogo di oggi, settimana, importi da pagare, elementi in ritardo e ricerca.
 - **Tema** chiaro, scuro o automatico.
+- **Importazione da altri calendari**: file `.ics` o `.zip` (export di Google Calendar, Apple, Outlook, Samsung…), con ripetizioni e promemoria; reimportando non si creano doppioni.
+- **Sincronizzazione Google Calendar** automatica tramite un piccolo script Google (`google/AgendAppSync.gs`, istruzioni nell'app: Impostazioni → Google Calendar).
+- **Aggiornamenti**: quando esce una nuova versione compaiono il tasto **Aggiorna** e un avviso con le novità.
 - **Backup** (esporta/importa JSON) ed **esportazione calendario .ics** per Google Calendar, Apple Calendario e Outlook.
 
 ## Pubblicazione con GitHub Pages
@@ -39,12 +42,19 @@ con le *Notifiche di sistema* attive (Impostazioni) compaiono anche come notific
 Con l'app completamente chiusa il browser non può svegliarla da solo: per quel caso è previsto un aggiornamento futuro
 (server push o sincronizzazione con Google Calendar tramite l'esportazione .ics).
 
+## Pubblicare un aggiornamento
+
+Aumentare lo stesso numero di versione in tre punti: `version.json`, `data-version` di `js/aggiornamenti.js` in `index.html`, `CACHE` in `sw.js` (e `APP_VERSION` in `js/app.js`).
+
 ## Struttura
 
 ```
 index.html            pagina principale
 css/style.css         grafica
-js/app.js             logica (calendario, sezioni, notifiche, dati)
+js/app.js             logica (calendario, sezioni, notifiche, dati, importazione)
+js/aggiornamenti.js   avviso e tasto Aggiorna
+version.json          versione pubblicata e novità
+google/               script per la sincronizzazione con Google Calendar
 sw.js                 service worker (offline e clic sulle notifiche)
 manifest.webmanifest  installazione come app
 icons/                logo e icone
