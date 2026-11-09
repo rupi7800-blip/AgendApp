@@ -1,5 +1,5 @@
 /* AgendApp — service worker: funzionamento offline e clic sulle notifiche */
-const CACHE = 'agendapp-1.1.1';
+const CACHE = 'agendapp-1.2.0';
 const ASSETS = [
   './', './index.html', './css/style.css', './js/app.js', './manifest.webmanifest',
   './js/aggiornamenti.js', './icons/logo.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-32.png', './icons/icon-180.png'

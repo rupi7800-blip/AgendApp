@@ -1,10 +1,7 @@
 {
-  "version": "1.1.1",
+  "version": "1.2.0",
   "date": "09/11/2026",
   "notes": [
-    "Importazione da Google Calendar e altri calendari (.ics e .zip)",
-    "Sincronizzazione automatica con Google Calendar",
-    "Tasto Aggiorna e avviso quando esce una nuova versione",
-    "Controllo aggiornamenti più leggero"
+    "Il pulsante + ora è al centro della barra in basso e non copre più la legenda e i contenuti"
   ]
 }

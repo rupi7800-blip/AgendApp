@@ -169,7 +169,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.1.1';
+const APP_VERSION = '1.2.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -306,11 +306,13 @@ function toast(msg) {
 /* ---------------- Render principale ---------------- */
 const TABS = [['cal', 'Calendario', 'calendar'], ['up', 'Prossimi', 'list'], ['sec', 'Sezioni', 'grid'], ['set', 'Impostazioni', 'sliders']];
 function renderChrome() {
-  $('#tabbar').innerHTML = TABS.map(([k, l, ic]) => `<button class="tab ${ui.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}" aria-current="${ui.tab === k ? 'page' : 'false'}">${I(ic)}<span>${l}</span></button>`).join('');
+  const tabBtn = ([k, l, ic]) => `<button class="tab ${ui.tab === k ? 'on' : ''}" data-act="tab" data-tab="${k}" aria-current="${ui.tab === k ? 'page' : 'false'}">${I(ic)}<span>${l}</span></button>`;
+  $('#tabbar').innerHTML = TABS.slice(0, 2).map(tabBtn).join('') +
+    `<button class="tab-add" data-act="new" aria-label="Nuovo elemento">${I('plus')}</button>` +
+    TABS.slice(2).map(tabBtn).join('');
   const t = todayD();
   $('#brand-date').textContent = `${GIORNI[wd(t)]} ${t.getDate()} ${MESI[t.getMonth()]}`;
   $('#btn-search').innerHTML = I('search');
-  $('#fab').innerHTML = I('plus');
   updateBell();
 }
 function updateBell() {
