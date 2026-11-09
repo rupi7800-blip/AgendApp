@@ -33,6 +33,8 @@
   --c-pagamento: #1e9a68;
   --c-compleanno: #d63f97;
   --c-nota: #c58a1c;
+  --c-svago: #0a9fc0;
+  --c-studio: #7048e8;
 }
 
 [data-theme="dark"] {
@@ -56,6 +58,8 @@
   --c-pagamento: #3cc28c;
   --c-compleanno: #f06bb5;
   --c-nota: #e2aa3e;
+  --c-svago: #35c0df;
+  --c-studio: #9b7dff;
 }
 
 * { box-sizing: border-box; }
@@ -550,3 +554,39 @@ body { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 44px); }
   .tabbar { padding: 5px; gap: 2px; }
   .tab-add { width: 48px; height: 48px; border-radius: 16px; }
 }
+
+/* 7 tipologie: 4 + 3 sui telefoni, una riga sugli schermi larghi */
+.typesel, .day-quick { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.typesel > label, .day-quick > button { grid-column: auto !important; }
+@media (max-width: 699px) {
+  .typesel, .day-quick { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .typesel span, .day-quick button { font-size: 10.8px; letter-spacing: -.01em; padding: 9px 1px 8px; }
+}
+
+/* Forme delle tipologie */
+.sh { width: 11px; height: 11px; flex: none; display: inline-block; vertical-align: -1px; }
+.sh-lg { width: 12px; height: 12px; margin-right: 2px; }
+.sh-xl { width: 16px; height: 16px; vertical-align: 1px; }
+.legend { gap: 8px 16px; font-size: 12.5px; }
+.legend .sh { width: 12px; height: 12px; }
+.ev .sh { width: 11px; height: 11px; }
+.dots { gap: 4px; }
+.dots .sh { width: 9px; height: 9px; }
+.chip-ev { display: flex; align-items: center; gap: 4px; }
+.chip-ev .sh { width: 8px; height: 8px; }
+.row-meta .sh { width: 10px; height: 10px; }
+.typesel span em { font-style: normal; display: inline-flex; align-items: center; gap: 4px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.typesel span em .sh { width: 9px; height: 9px; }
+.day-quick button > span { display: inline-flex; align-items: center; gap: 4px; }
+.day-quick button .sh { width: 9px; height: 9px; }
+.qbtn .sh { width: 11px; height: 11px; }
+
+/* Colori delle aree */
+.tile.area .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--tc); margin-right: 7px; vertical-align: 0; }
+.chipsel .area-chip svg.i { color: var(--tc); }
+.chipsel input:checked + .area-chip { background: var(--tc); border-color: var(--tc); color: #fff; }
+.chipsel input:checked + .area-chip svg.i { color: #fff; }
+[data-theme="dark"] .chipsel input:checked + .area-chip { color: #fff; }
+.typesel span, .day-quick button { position: relative; }
+.sh-badge { position: absolute; top: 6px; right: 7px; width: 9px; height: 9px; opacity: .85; }
+.typesel span em { font-style: normal; }

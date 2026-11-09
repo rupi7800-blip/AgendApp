@@ -96,25 +96,39 @@ const TYPES = {
   scadenza: { label: 'Scadenza', plural: 'Scadenze', icon: 'flag', desc: 'Termini da non dimenticare' },
   pagamento: { label: 'Pagamento', plural: 'Pagamenti', icon: 'euro', desc: 'Bollette, rate, abbonamenti' },
   compleanno: { label: 'Compleanno', plural: 'Compleanni', icon: 'cake', desc: 'Ricorrenze di chi ti sta a cuore' },
-  nota: { label: 'Nota', plural: 'Note', icon: 'note', desc: 'Appunti e promemoria' }
+  nota: { label: 'Nota', plural: 'Note', icon: 'note', desc: 'Appunti e promemoria' },
+  svago: { label: 'Svago', plural: 'Svago', icon: 'sun', desc: 'Uscite, gite, hobby, tempo libero' },
+  studio: { label: 'Studio', plural: 'Studio', icon: 'book', desc: 'Lezioni, esami, sessioni di studio' }
 };
+const TIMED = new Set(['appuntamento', 'svago', 'studio']);
 const TYPE_ORDER = Object.keys(TYPES);
 const CHECKABLE = new Set(['scadenza', 'pagamento', 'nota']);
 
 const CATS = {
-  personale: { label: 'Personale', icon: 'user', color: '#6366d9' },
-  lavoro: { label: 'Lavoro', icon: 'briefcase', color: '#2f6fde' },
+  personale: { label: 'Personale', icon: 'user', color: '#7c4dff' },
+  lavoro: { label: 'Lavoro', icon: 'briefcase', color: '#1f6feb' },
   salute: { label: 'Salute', icon: 'heart', color: '#e5484d' },
-  mezzi: { label: 'Mezzi', icon: 'car', color: '#56657f' },
-  casa: { label: 'Casa', icon: 'home', color: '#b7791f' },
-  famiglia: { label: 'Famiglia e amici', icon: 'users', color: '#d63f97' },
-  svago: { label: 'Svago', icon: 'sun', color: '#ef8a00' },
-  sport: { label: 'Sport', icon: 'dumbbell', color: '#0f9d8a' },
-  studio: { label: 'Studio', icon: 'book', color: '#7048e8' },
+  mezzi: { label: 'Mezzi', icon: 'car', color: '#52637d' },
+  casa: { label: 'Casa', icon: 'home', color: '#d08a0e' },
+  famiglia: { label: 'Famiglia e amici', icon: 'users', color: '#e0479e' },
+  sport: { label: 'Sport', icon: 'dumbbell', color: '#0d9488' },
   animali: { label: 'Animali', icon: 'paw', color: '#8d6e63' },
-  finanze: { label: 'Finanze', icon: 'wallet', color: '#1e9a68' },
-  altro: { label: 'Altro', icon: 'dots', color: '#868e96' }
+  finanze: { label: 'Finanze', icon: 'wallet', color: '#16a34a' },
+  altro: { label: 'Altro', icon: 'dots', color: '#8a94a6' }
 };
+/* Ogni tipologia ha una forma (in legenda), ogni area un colore */
+const SHAPES = { appuntamento: 'circle', scadenza: 'triangle', pagamento: 'square', compleanno: 'star', nota: 'cross', svago: 'diamond', studio: 'hexagon' };
+const SHAPE_SVG = {
+  circle: '<circle cx="6" cy="6" r="5.2"/>',
+  triangle: '<path d="M6 .4 11.8 11.4H.2z"/>',
+  square: '<rect x=".9" y=".9" width="10.2" height="10.2" rx="1.6"/>',
+  star: '<path d="M6 .2l1.8 3.9 4.2.5-3.1 2.9.85 4.2L6 9.6l-3.75 2.1.85-4.2L0 4.6l4.2-.5z"/>',
+  cross: '<path d="M4.2.6h3.6v3.6h3.6v3.6H7.8v3.6H4.2V7.8H.6V4.2h3.6z"/>',
+  diamond: '<path d="M6 0 12 6 6 12 0 6z"/>',
+  hexagon: '<path d="M3.1.8h5.8L11.8 6l-2.9 5.2H3.1L.2 6z"/>'
+};
+const SH = (type, color = 'currentColor', cls = '') => `<svg class="sh ${cls}" viewBox="0 0 12 12" aria-hidden="true" style="color:${color}"><g fill="currentColor">${SHAPE_SVG[SHAPES[type]] || SHAPE_SVG.circle}</g></svg>`;
+const catColor = it => (CATS[it.category] || CATS.altro).color;
 
 const VTYPES = {
   auto: { label: 'Auto', icon: 'car' },
@@ -169,7 +183,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.4.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -188,7 +202,9 @@ const DEF_SETTINGS = {
     scadenza: { style: 'full', reminders: [10080, 1440, 0], sound: true, vibrate: true },
     pagamento: { style: 'full', reminders: [4320, 0], sound: true, vibrate: true },
     compleanno: { style: 'full', reminders: [1440, 0], sound: true, vibrate: true },
-    nota: { style: 'banner', reminders: [0], sound: false, vibrate: false }
+    nota: { style: 'banner', reminders: [0], sound: false, vibrate: false },
+    svago: { style: 'banner', reminders: [60], sound: true, vibrate: true },
+    studio: { style: 'full', reminders: [60, 15], sound: true, vibrate: true }
   }
 };
 function blankState() { return { items: [], vehicles: [], dayNotes: {}, fired: {}, snoozes: [], log: [], settings: clone(DEF_SETTINGS) }; }
@@ -198,11 +214,17 @@ function migrate(raw) {
   s.settings.defaults = Object.assign(clone(DEF_SETTINGS.defaults), s.settings.defaults || {});
   ['items', 'vehicles', 'snoozes', 'log'].forEach(k => { if (!Array.isArray(s[k])) s[k] = []; });
   ['dayNotes', 'fired'].forEach(k => { if (!s[k] || typeof s[k] !== 'object') s[k] = {}; });
-  s.items.forEach(it => { it.done = it.done || {}; it.notify = it.notify || Object.assign({ enabled: true }, clone(s.settings.defaults[it.type] || DEF_SETTINGS.defaults.nota)); });
+  s.items.forEach(it => {
+    if (it.category === 'svago' || it.category === 'studio') {
+      if (it.type === 'appuntamento') it.type = it.category;
+      it.category = 'personale';
+    }
+    it.done = it.done || {}; it.notify = it.notify || Object.assign({ enabled: true }, clone(s.settings.defaults[it.type] || DEF_SETTINGS.defaults.nota)); });
   return s;
 }
 let S;
 try { S = migrate(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = blankState(); }
+try { if (localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignora */ }
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast('Impossibile salvare i dati sul dispositivo'); }
@@ -344,7 +366,7 @@ function calTitle() {
 function calendarView() {
   const seg = [['week', 'Settimana'], ['month', 'Mese'], ['year', 'Anno']].map(([k, l]) => `<button data-act="view" data-v="${k}" class="${ui.view === k ? 'on' : ''}">${l}</button>`).join('');
   const body = ui.view === 'week' ? weekView() : ui.view === 'month' ? monthView() : yearView();
-  const legend = TYPE_ORDER.map(t => `<span><i style="background:var(--c-${t})"></i>${TYPES[t].plural}</span>`).join('');
+  const legend = TYPE_ORDER.map(t => `<span>${SH(t, 'var(--ink-2)')}${TYPES[t].plural}</span>`).join('');
   return `<div class="cal-head">
       <div class="seg" role="tablist">${seg}</div>
       <div class="cal-nav">
@@ -363,7 +385,7 @@ function evLine(e) {
   let name = esc(it.title);
   if (it.type === 'compleanno') { const a = ageAt(it, e.occ); name += a ? ` (${a})` : ''; }
   if (it.type === 'pagamento' && it.amount) name += ` · ${EUR.format(it.amount)}`;
-  return `<div class="ev ${done ? 'done' : ''}" style="--tc:var(--c-${it.type})">${t || I(TYPES[it.type].icon)}<span class="n">${name}</span></div>`;
+  return `<div class="ev ${done ? 'done' : ''}" style="--tc:${catColor(it)}">${SH(it.type, 'var(--tc)')}${t}<span class="n">${name}</span></div>`;
 }
 function weekView() {
   const s = startOfWeek(ui.cursor), idx = buildIndex(s, addDays(s, 6)), tk = ds(todayD());
@@ -387,8 +409,8 @@ function monthView() {
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(s, i), k = ds(d), list = idx[k] || [], hol = holidayOf(k);
     const out = d.getMonth() !== m;
-    const dots = list.slice(0, 5).map(x => `<i style="--tc:var(--c-${x.it.type})"></i>`).join('') + (S.dayNotes[k] ? '<i style="--tc:var(--muted)"></i>' : '');
-    const chips = list.slice(0, 3).map(x => `<div class="chip-ev ${isDone(x.it, x.occ) ? 'done' : ''}" style="--tc:var(--c-${x.it.type})">${isAllDay(x.it) ? '' : x.it.time + ' '}${esc(x.it.title)}</div>`).join('');
+    const dots = list.slice(0, 5).map(x => SH(x.it.type, catColor(x.it))).join('') + (S.dayNotes[k] ? '<i style="--tc:var(--muted)"></i>' : '');
+    const chips = list.slice(0, 3).map(x => `<div class="chip-ev ${isDone(x.it, x.occ) ? 'done' : ''}" style="--tc:${catColor(x.it)}">${SH(x.it.type, 'var(--tc)')}${isAllDay(x.it) ? '' : x.it.time + ' '}${esc(x.it.title)}</div>`).join('');
     cells += `<button class="mcell ${out ? 'out' : ''} ${k === tk ? 'today' : ''} ${hol || wd(d) === 6 ? 'red' : ''}" data-act="day" data-d="${k}" aria-label="${fmtLong(k)}${list.length ? ', ' + list.length + ' elementi' : ''}">
       <span class="d">${d.getDate()}</span>
       ${hol && !out ? `<span class="mhol">${esc(hol)}</span>` : ''}
@@ -443,9 +465,9 @@ function rowHtml(it, occ, o = {}) {
   const side = [];
   if (it.type === 'pagamento' && it.amount) side.push(`<span class="amount">${EUR.format(it.amount)}</span>`);
   if (CHECKABLE.has(it.type) && occ) side.push(`<button class="check ${done ? 'on' : ''}" data-act="toggle-done" data-id="${it.id}" data-occ="${occ}" aria-label="${done ? 'Segna come da fare' : 'Segna come fatto'}">${I('check')}</button>`);
-  return `<div class="row ${done ? 'done' : ''} ${o.overdue ? 'overdue' : ''}" data-act="edit" data-id="${it.id}" data-occ="${occ || ''}" style="--tc:var(--c-${it.type})" tabindex="0" role="button">
+  return `<div class="row ${done ? 'done' : ''} ${o.overdue ? 'overdue' : ''}" data-act="edit" data-id="${it.id}" data-occ="${occ || ''}" style="--tc:${catColor(it)}" tabindex="0" role="button">
     <div class="ibox">${I(T.icon)}</div>
-    <div class="row-main"><div class="row-title">${esc(it.title)}</div><div class="row-meta">${meta.join('')}</div></div>
+    <div class="row-main"><div class="row-title">${esc(it.title)}</div><div class="row-meta"><span>${SH(it.type, 'var(--tc)')}${T.label}</span>${meta.join('')}</div></div>
     ${side.length ? `<div class="row-side">${side.join('')}</div>` : ''}
   </div>`;
 }
@@ -511,16 +533,19 @@ function sectionsView() {
   const countNext = f => { let n = 0; for (const it of S.items) if (f(it)) n += expand(it, t, in30).length; return n; };
   const typeTiles = TYPE_ORDER.map(k => {
     const tot = S.items.filter(i => i.type === k).length, nx = countNext(i => i.type === k);
-    return `<button class="tile" data-act="section" data-s="type:${k}" style="--tc:var(--c-${k})"><div class="ibox">${I(TYPES[k].icon)}</div><div><div class="tile-name">${TYPES[k].plural}</div><div class="tile-sub">${tot ? `${tot} salvati · ${nx} entro 30 gg` : TYPES[k].desc}</div></div></button>`;
+    return `<button class="tile" data-act="section" data-s="type:${k}" style="--tc:var(--ink-2)"><div class="ibox">${I(TYPES[k].icon)}</div><div><div class="tile-name">${SH(k, 'var(--ink-2)', 'sh-lg')} ${TYPES[k].plural}</div><div class="tile-sub">${tot ? `${tot} ${tot === 1 ? 'salvato' : 'salvati'} · ${nx} entro 30 gg` : TYPES[k].desc}</div></div></button>`;
   }).join('');
   const catTiles = Object.entries(CATS).map(([k, c]) => {
     const tot = S.items.filter(i => i.category === k).length;
-    const sub = k === 'mezzi' ? `${S.vehicles.length} mezzi · ${tot} impegni` : tot ? `${tot} impegni` : 'Vuota';
-    return `<button class="tile" data-act="section" data-s="cat:${k}" style="--tc:${c.color}"><div class="ibox">${I(c.icon)}</div><div><div class="tile-name">${c.label}</div><div class="tile-sub">${sub}</div></div></button>`;
+    const imp = n => `${n} ${n === 1 ? 'impegno' : 'impegni'}`;
+    const sub = k === 'mezzi' ? `${S.vehicles.length} ${S.vehicles.length === 1 ? 'mezzo' : 'mezzi'} · ${imp(tot)}` : tot ? imp(tot) : 'Vuota';
+    return `<button class="tile area" data-act="section" data-s="cat:${k}" style="--tc:${c.color}"><div class="ibox">${I(c.icon)}</div><div><div class="tile-name"><i class="swatch"></i>${c.label}</div><div class="tile-sub">${sub}</div></div></button>`;
   }).join('');
   return `<h1 class="view-title">Sezioni</h1>
     <div class="group-title">Tipologie</div><div class="tiles">${typeTiles}</div>
-    <div class="group-title">Aree della vita</div><div class="tiles">${catTiles}</div>`;
+    <div class="group-title">Aree della vita</div>
+    <p class="view-sub" style="margin:-4px 4px 12px">Ogni area ha il suo colore: è quello con cui vedi gli impegni nel calendario.</p>
+    <div class="tiles">${catTiles}</div>`;
 }
 function itemsGrouped(filter, opts = {}) {
   const t = todayD(), list = S.items.filter(filter);
@@ -560,7 +585,7 @@ function sectionDetail(key) {
         <div class="stat" style="--tc:var(--c-nota)"><div class="k">${I('repeat')}Ricorrenti</div><div class="v">${S.items.filter(i => i.type === 'pagamento' && i.repeat !== 'none').length}</div></div>
       </div>`;
     }
-    return `${back}<div class="sec-head" style="--tc:var(--c-${id})"><div class="ibox">${I(T.icon)}</div><div class="grow"><h2>${T.plural}</h2><p>${T.desc}</p></div>
+    return `${back}<div class="sec-head" style="--tc:var(--ink-2)"><div class="ibox">${I(T.icon)}</div><div class="grow"><h2>${SH(id, 'var(--ink-2)', 'sh-xl')} ${T.plural}</h2><p>${T.desc}</p></div>
       <button class="btn primary sm" data-act="new-type" data-type="${id}">${I('plus')}Aggiungi</button></div>
       ${extra}${itemsGrouped(i => i.type === id, { icon: T.icon, futureLabel: id === 'compleanno' ? 'Prossimi compleanni' : 'In programma' })}`;
   }
@@ -579,7 +604,7 @@ function sectionDetail(key) {
     const v = getVeh(id);
     if (!v) { ui.section = 'cat:mezzi'; return sectionDetail(ui.section); }
     const VT = VTYPES[v.type];
-    const tpl = (VTEMPLATES[v.type] || []).map((t, i) => `<button class="qbtn" data-act="veh-tpl" data-vid="${v.id}" data-i="${i}" style="--tc:var(--c-${t.type})">${I(TYPES[t.type].icon)}${t.title}</button>`).join('');
+    const tpl = (VTEMPLATES[v.type] || []).map((t, i) => `<button class="qbtn" data-act="veh-tpl" data-vid="${v.id}" data-i="${i}" style="--tc:var(--ink-2)">${SH(t.type, 'var(--ink-2)')}${t.title}</button>`).join('');
     return `<button class="back" data-act="section" data-s="cat:mezzi">${I('chevL')}Mezzi</button>
       <div class="sec-head" style="--tc:${CATS.mezzi.color}"><div class="ibox">${I(VT.icon)}</div><div class="grow"><h2>${esc(v.name)}</h2><p>${VT.label}${v.plate ? ' · ' + esc(v.plate) : ''}</p></div>
       <button class="btn sm" data-act="veh-edit" data-vid="${v.id}">${I('edit')}Modifica</button></div>
@@ -606,9 +631,9 @@ function settingsView() {
   const permTxt = { granted: 'Consentite', denied: 'Bloccate dal browser', default: 'Non ancora richieste', unsupported: 'Non supportate da questo browser' }[perm];
   const defs = TYPE_ORDER.map(t => {
     const d = st.defaults[t];
-    return `<div class="set-type"><div class="set-type-head" style="--tc:var(--c-${t})"><div class="ibox">${I(TYPES[t].icon)}</div>${TYPES[t].plural}</div>
+    return `<div class="set-type"><div class="set-type-head" style="--tc:var(--ink-2)"><div class="ibox">${I(TYPES[t].icon)}</div>${SH(t, 'var(--ink-2)')} ${TYPES[t].plural}</div>
       <div class="chipsel" style="margin-bottom:8px">${STYLES.map(([k, l]) => `<label><input type="radio" name="def-${t}-style" data-def="${t}" data-k="style" value="${k}" ${d.style === k ? 'checked' : ''}><span>${l}</span></label>`).join('')}</div>
-      <div class="chipsel">${REMINDERS.map(([m]) => `<label><input type="checkbox" data-def="${t}" data-k="rem" value="${m}" ${d.reminders.includes(m) ? 'checked' : ''}><span>${remLabel(m, t !== 'appuntamento')}</span></label>`).join('')}</div>
+      <div class="chipsel">${REMINDERS.map(([m]) => `<label><input type="checkbox" data-def="${t}" data-k="rem" value="${m}" ${d.reminders.includes(m) ? 'checked' : ''}><span>${remLabel(m, !TIMED.has(t))}</span></label>`).join('')}</div>
     </div>`;
   }).join('');
   return `<h1 class="view-title">Impostazioni</h1>
@@ -706,7 +731,7 @@ function openDay(key) {
       return {
         title: `${fmtLong(cur)}<span class="sub ${hol ? 'red' : ''}">${cap(rd)}${hol ? ' · ' + esc(hol) : ''}</span>`,
         body: `<div class="btns" style="margin:0 0 12px"><button class="btn sm" data-act="day-shift" data-n="-1">${I('chevL')}Giorno prima</button><span class="grow"></span><button class="btn sm" data-act="day-shift" data-n="1">Giorno dopo${I('chevR')}</button></div>
-          <div class="day-quick">${TYPE_ORDER.map(t => `<button data-act="new-type" data-type="${t}" data-d="${cur}" style="--tc:var(--c-${t})">${I(TYPES[t].icon)}${TYPES[t].label}</button>`).join('')}</div>
+          <div class="day-quick">${TYPE_ORDER.map(t => `<button data-act="new-type" data-type="${t}" data-d="${cur}" style="--tc:var(--ink-2)">${SH(t, 'var(--ink-2)', 'sh-badge')}${I(TYPES[t].icon)}<span>${TYPES[t].label}</span></button>`).join('')}</div>
           <div class="day-list">${listHtml()}</div>
           <div class="day-notes field"><label for="daynote" style="display:flex;justify-content:space-between">Appunti del giorno <span class="saved-hint">Salvato ✓</span></label>
           <textarea class="inp" id="daynote" placeholder="Scrivi qui pensieri, cose da ricordare, liste…">${esc(S.dayNotes[cur] || '')}</textarea></div>`
@@ -731,20 +756,20 @@ function openDay(key) {
 }
 
 /* ---------------- Modulo elemento ---------------- */
-function defaultCategory(type) { return { compleanno: 'famiglia', pagamento: 'finanze', appuntamento: 'personale', scadenza: 'personale', nota: 'personale' }[type]; }
+function defaultCategory(type) { return { compleanno: 'famiglia', pagamento: 'finanze', appuntamento: 'personale', scadenza: 'personale', nota: 'personale', svago: 'personale', studio: 'personale' }[type]; }
 function nextHalfHour() { const n = new Date(); n.setMinutes(n.getMinutes() < 30 ? 30 : 60, 0, 0); return `${pad(n.getHours())}:${pad(n.getMinutes())}`; }
 function newItem(p = {}) {
   const type = p.type || 'appuntamento';
   return Object.assign({
     id: uid(), type, title: '', category: p.category || defaultCategory(type), vehicleId: '',
-    date: p.date || ds(todayD()), allDay: type !== 'appuntamento', time: type === 'appuntamento' ? nextHalfHour() : '', endTime: '',
+    date: p.date || ds(todayD()), allDay: !TIMED.has(type), time: TIMED.has(type) ? nextHalfHour() : '', endTime: '',
     amount: '', birthYear: '', repeat: type === 'compleanno' ? 'yearly' : 'none', until: '', location: '', notes: '',
     notify: Object.assign({ enabled: true }, clone(S.settings.defaults[type])), done: {}, created: Date.now()
   }, p.extra || {});
 }
 function formBody(d, isNew, occ) {
-  const typeSel = TYPE_ORDER.map(t => `<label style="--tc:var(--c-${t})"><input type="radio" name="type" value="${t}" ${d.type === t ? 'checked' : ''}><span>${I(TYPES[t].icon)}${TYPES[t].label}</span></label>`).join('');
-  const catSel = Object.entries(CATS).map(([k, c]) => `<label><input type="radio" name="category" value="${k}" ${d.category === k ? 'checked' : ''}><span>${I(c.icon)}${c.label}</span></label>`).join('');
+  const typeSel = TYPE_ORDER.map(t => `<label style="--tc:var(--accent)"><input type="radio" name="type" value="${t}" ${d.type === t ? 'checked' : ''}><span>${SH(t, 'currentColor', 'sh-badge')}${I(TYPES[t].icon)}<em>${TYPES[t].label}</em></span></label>`).join('');
+  const catSel = Object.entries(CATS).map(([k, c]) => `<label style="--tc:${c.color}"><input type="radio" name="category" value="${k}" ${d.category === k ? 'checked' : ''}><span class="area-chip">${I(c.icon)}${c.label}</span></label>`).join('');
   const vehSel = S.vehicles.length
     ? `<select class="inp" name="vehicleId"><option value="">— Nessun mezzo specifico —</option>${S.vehicles.map(v => `<option value="${v.id}" ${d.vehicleId === v.id ? 'selected' : ''}>${VTYPES[v.type].label} · ${esc(v.name)}${v.plate ? ' (' + esc(v.plate) + ')' : ''}</option>`).join('')}</select>`
     : `<p class="hint">Non hai ancora registrato mezzi. <button type="button" class="pill" data-act="veh-add" style="padding:5px 10px;font-size:12.5px">Aggiungi mezzo</button></p>`;
@@ -763,14 +788,14 @@ function formBody(d, isNew, occ) {
     </div>
     <div class="grid2" data-when="timed">
       <div class="field"><label for="f-time">Ora</label><input class="inp" type="time" id="f-time" name="time" value="${d.time || ''}"></div>
-      <div class="field" data-show="appuntamento"><label for="f-end">Fine</label><input class="inp" type="time" id="f-end" name="endTime" value="${d.endTime || ''}"></div>
+      <div class="field" data-show="appuntamento,svago,studio"><label for="f-end">Fine</label><input class="inp" type="time" id="f-end" name="endTime" value="${d.endTime || ''}"></div>
     </div>
     <div class="field" data-show="pagamento"><label for="f-amount">Importo (€)</label><input class="inp" type="text" id="f-amount" name="amount" inputmode="decimal" autocomplete="off" placeholder="0,00" value="${d.amount !== '' ? String(d.amount).replace('.', ',') : ''}"></div>
     <div class="grid2" data-when="notbirthday">
       <div class="field"><label for="f-rep">Ripetizione</label><select class="inp" id="f-rep" name="repeat">${REPEATS.map(([k, l]) => `<option value="${k}" ${d.repeat === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
       <div class="field" data-when="repeat"><label for="f-until">Fino al</label><input class="inp" type="date" id="f-until" name="until" value="${d.until || ''}"></div>
     </div>
-    <div class="field" data-show="appuntamento,scadenza,svago"><label for="f-loc">Luogo</label><input class="inp" id="f-loc" name="location" value="${esc(d.location)}" placeholder="Indirizzo o luogo" autocomplete="off"></div>
+    <div class="field" data-show="appuntamento,scadenza,svago,studio"><label for="f-loc">Luogo</label><input class="inp" id="f-loc" name="location" value="${esc(d.location)}" placeholder="Indirizzo o luogo" autocomplete="off"></div>
     <div class="field"><label for="f-notes">Note</label><textarea class="inp" id="f-notes" name="notes" placeholder="Dettagli, documenti da portare, numeri utili…">${esc(d.notes)}</textarea></div>
 
     <div class="notif-box ${n.enabled ? '' : 'off'}" id="nbox">
@@ -803,7 +828,7 @@ function syncForm(form) {
   });
   $('[data-lbl-title]', form).textContent = type === 'compleanno' ? 'Nome' : 'Titolo';
   $('[data-lbl-date]', form).textContent = type === 'compleanno' ? 'Giorno del compleanno' : type === 'scadenza' ? 'Data di scadenza' : 'Data';
-  $('#f-title', form).placeholder = { appuntamento: 'Es. Visita dal dentista', scadenza: 'Es. Rinnovo carta d\'identità', pagamento: 'Es. Bolletta luce', compleanno: 'Es. Mamma', nota: 'Es. Comprare i regali' }[type];
+  $('#f-title', form).placeholder = { appuntamento: 'Es. Visita dal dentista', scadenza: 'Es. Rinnovo carta d\'identità', pagamento: 'Es. Bolletta luce', compleanno: 'Es. Mamma', nota: 'Es. Comprare i regali', svago: 'Es. Cinema con gli amici', studio: 'Es. Ripasso di anatomia' }[type];
   $$('[data-rem]', form).forEach(el => { el.textContent = remLabel(+el.dataset.rem, allDay); });
   $('#nbox', form).classList.toggle('off', fd.get('n_enabled') !== 'on');
   const st = STYLES.find(s => s[0] === fd.get('n_style'));
@@ -830,8 +855,8 @@ function openForm(it, preset = {}, occ = null) {
           const catIn = form.querySelector(`input[name=category][value="${defaultCategory(t)}"]`);
           const curCat = new FormData(form).get('category');
           if (curCat === defaultCategory(lastType) && catIn) catIn.checked = true;
-          form.elements.allDay.checked = t !== 'appuntamento';
-          if (t === 'appuntamento' && !form.elements.time.value) form.elements.time.value = nextHalfHour();
+          form.elements.allDay.checked = !TIMED.has(t);
+          if (TIMED.has(t) && !form.elements.time.value) form.elements.time.value = nextHalfHour();
           $$('input[name=n_style]', form).forEach(r => { r.checked = r.value === def.style; });
           $$('input[name=n_rem]', form).forEach(c => { c.checked = def.reminders.includes(+c.value); });
           form.elements.n_sound.checked = def.sound; form.elements.n_vibrate.checked = def.vibrate;
@@ -852,7 +877,7 @@ function openForm(it, preset = {}, occ = null) {
         const out = Object.assign(d, {
           type, title, category: fd.get('category') || 'altro',
           vehicleId: fd.get('category') === 'mezzi' ? (fd.get('vehicleId') || '') : '',
-          date: fd.get('date'), allDay, time: allDay ? '' : time, endTime: !allDay && type === 'appuntamento' ? (fd.get('endTime') || '') : '',
+          date: fd.get('date'), allDay, time: allDay ? '' : time, endTime: !allDay && TIMED.has(type) ? (fd.get('endTime') || '') : '',
           amount: type === 'pagamento' && fd.get('amount') ? Math.round(parseFloat(String(fd.get('amount')).replace(',', '.')) * 100) / 100 : '',
           birthYear: type === 'compleanno' ? (fd.get('birthYear') || '') : '',
           repeat: type === 'compleanno' ? 'yearly' : (fd.get('repeat') || 'none'),
@@ -871,7 +896,7 @@ function openForm(it, preset = {}, occ = null) {
         save();
         closeSheet();
         refreshAll();
-        toast(isNew ? `${TYPES[type].label} aggiunt${type === 'appuntamento' || type === 'pagamento' || type === 'compleanno' ? 'o' : 'a'}` : 'Modifiche salvate');
+        toast(isNew ? `${TYPES[type].label} aggiunt${type === 'scadenza' || type === 'nota' ? 'a' : 'o'}` : 'Modifiche salvate');
       };
     }
   });
@@ -934,7 +959,7 @@ function openNotifCenter() {
         const it = getItem(l.id);
         if (!it) return '';
         const d = new Date(l.at);
-        return `<div class="nc-item ${l.read ? '' : 'unread'}" data-act="nc-open" data-key="${esc(l.key)}" style="--tc:var(--c-${it.type})">
+        return `<div class="nc-item ${l.read ? '' : 'unread'}" data-act="nc-open" data-key="${esc(l.key)}" style="--tc:${catColor(it)}">
           <div class="ibox">${I(TYPES[it.type].icon)}</div>
           <div class="row-main"><div class="row-title">${esc(it.title)}</div>
           <div class="row-meta"><span>${TYPES[it.type].label} · ${fmtShort(l.occ)}</span><span>${I('bell')}${pad(d.getDate())}/${pad(d.getMonth() + 1)} ${pad(d.getHours())}:${pad(d.getMinutes())}</span></div></div></div>`;
@@ -1048,7 +1073,7 @@ function whenText(it, occ) {
   if (Math.abs(m) <= 1) return 'Adesso';
   if (m > 0 && m < 60) return `Tra ${m} minuti`;
   if (m > 0 && m < 1440 && rd === 'oggi') { const h = Math.floor(m / 60), mm = m % 60; return `Tra ${h} or${h === 1 ? 'a' : 'e'}${mm ? ' e ' + mm + ' min' : ''}`; }
-  if (m < 0 && m > -60) return it.type === 'appuntamento' ? `Iniziato ${-m} minuti fa` : it.type === 'scadenza' ? `Scaduta ${-m} minuti fa` : `${-m} minuti fa`;
+  if (m < 0 && m > -60) return TIMED.has(it.type) ? `Iniziato ${-m} minuti fa` : it.type === 'scadenza' ? `Scaduta ${-m} minuti fa` : `${-m} minuti fa`;
   return `${cap(rd)} alle ${it.time}`;
 }
 function pump() {
@@ -1066,7 +1091,7 @@ function showAlert(a) {
   if (it.type === 'pagamento' && it.amount) meta.push(`<span>${I('euro')}${EUR.format(it.amount)}</span>`);
   meta.push(`<span>${I(C.icon)}${C.label}</span>`);
   const check = CHECKABLE.has(it.type);
-  $('#alert-root').innerHTML = `<div class="alert" style="--tc:var(--c-${it.type})" role="alertdialog" aria-modal="true" aria-labelledby="al-title">
+  $('#alert-root').innerHTML = `<div class="alert" style="--tc:${catColor(it)}" role="alertdialog" aria-modal="true" aria-labelledby="al-title">
     ${alertQueue.length ? `<div class="alert-count">+${alertQueue.length} in coda</div>` : ''}
     <div class="alert-kind">${I(T.icon)}${T.label}${a.snoozed ? ' · posticipato' : ''}</div>
     <div class="alert-ring">${I(T.icon)}</div>
@@ -1117,7 +1142,7 @@ $('#alert-root').addEventListener('click', e => {
 function showBanner(it, a) {
   const el = document.createElement('div');
   el.className = 'banner';
-  el.style.setProperty('--tc', `var(--c-${it.type})`);
+  el.style.setProperty('--tc', catColor(it));
   el.innerHTML = `<div class="ibox">${I(TYPES[it.type].icon)}</div>
     <div class="row-main" data-b="open"><div class="row-title">${esc(it.title)}</div><div class="row-meta"><span>${whenText(it, a.occ)}</span></div></div>
     <div class="btns"><button class="btn sm" data-b="snooze" aria-label="Posticipa di 10 minuti">${I('alarm')}10'</button><button class="icon-btn" data-b="close" aria-label="Chiudi">${I('x')}</button></div>`;
@@ -1217,7 +1242,8 @@ function loadDemo() {
     mk({ type: 'compleanno', date: D(9) }, { title: 'Mamma', category: 'famiglia', birthYear: String(t.getFullYear() - 68) }),
     mk({ type: 'scadenza', date: D(25) }, { title: 'Rinnovo carta d\'identità', category: 'personale', location: 'Comune' }),
     mk({ type: 'nota', date: D(0) }, { title: 'Comprare i regali', category: 'famiglia', notes: 'Lista: libro, sciarpa, cuffie' }),
-    mk({ type: 'appuntamento', date: D(6) }, { title: 'Giro in MTB con gli amici', category: 'svago', time: '08:30', location: 'Parcheggio dei boschi' }),
+    mk({ type: 'svago', date: D(6) }, { title: 'Giro in MTB con gli amici', category: 'sport', time: '08:30', location: 'Parcheggio dei boschi' }),
+    mk({ type: 'studio', date: D(3) }, { title: 'Ripasso di anatomia', category: 'personale', time: '15:00', endTime: '17:00' }),
     mk({ type: 'scadenza', date: D(20) }, { title: 'Manutenzione MTB', category: 'mezzi', vehicleId: bike.id, repeat: 'monthly6' })
   ];
   list.forEach(it => { it.created = Date.now() - 30 * 864e5; S.items.push(it); resetFired(it); });
@@ -1317,7 +1343,7 @@ function icsEventToItems(ev, o) {
   Object.assign(base, {
     title: (type === 'compleanno' ? cleanBdayTitle(ev.summary) : ev.summary) || '(senza titolo)',
     allDay: ev.start.allDay || type === 'compleanno', time: ev.start.allDay ? '' : ev.start.time,
-    endTime: !ev.start.allDay && ev.end && ev.end.date === ev.start.date && type === 'appuntamento' ? ev.end.time : '',
+    endTime: !ev.start.allDay && ev.end && ev.end.date === ev.start.date && TIMED.has(type) ? ev.end.time : '',
     location: ev.loc || '', notes: (ev.desc || '').slice(0, 3000),
     repeat: type === 'compleanno' ? 'yearly' : repeat, until,
     extUid: `${o.prefix}${ev.uid || ev.summary + ev.start.date}`, source: o.source, calName: o.calName || ''

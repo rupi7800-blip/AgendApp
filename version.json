@@ -1,7 +1,9 @@
 {
-  "version": "1.2.0",
+  "version": "1.4.0",
   "date": "09/11/2026",
   "notes": [
-    "Il pulsante + ora è al centro della barra in basso e non copre più la legenda e i contenuti"
+    "Svago e Studio sono ora tipologie",
+    "Ogni tipologia ha una forma (●, ▲, ■, ★, ✚, ◆, ⬢) indicata nella legenda",
+    "Ogni area della vita ha un colore, visibile in Sezioni e negli impegni del calendario"
   ]
 }
