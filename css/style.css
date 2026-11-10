@@ -598,3 +598,23 @@ body { padding-bottom: calc(var(--tabbar-h) + var(--safe-b) + 44px); }
   .typesel > label:nth-child(n+4), .day-quick > button:nth-child(n+4) { grid-column: span 3 !important; }
   .typesel span, .day-quick button { font-size: 12px; padding: 10px 4px 9px; letter-spacing: 0; }
 }
+
+/* Guida importazione */
+.guide-intro { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+.guide-intro > div { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.guide-intro b { display: flex; align-items: center; gap: 6px; color: var(--ink); font-size: 14px; }
+.guide-intro b svg.i { width: 17px; height: 17px; color: var(--accent); }
+details.guide { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 8px; box-shadow: var(--shadow-1); overflow: hidden; }
+details.guide summary { list-style: none; display: flex; align-items: center; gap: 12px; padding: 12px; cursor: pointer; }
+details.guide summary::-webkit-details-marker { display: none; }
+details.guide summary .ibox { width: 38px; height: 38px; }
+details.guide summary .grow { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+details.guide summary small { color: var(--muted); font-size: 12.5px; font-weight: 600; }
+details.guide summary .chev { color: var(--muted); transition: transform .2s; }
+details.guide[open] summary .chev { transform: rotate(90deg); }
+.guide-body { padding: 0 14px 12px; border-top: 1px solid var(--line); }
+.guide-body ol, .guide-body ul { margin: 12px 0 4px; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 9px; font-size: 14px; line-height: 1.5; color: var(--ink-2); }
+.guide-body ol li b:first-child { display: inline-block; min-width: 20px; color: var(--accent); }
+.guide-body ul li::before { content: '•'; color: var(--accent); font-weight: 800; margin-right: 8px; }
+.guide-body code { font-size: 12.5px; background: var(--surface-2); padding: 1px 5px; border-radius: 5px; }
+@media (max-width: 420px) { .guide-intro { grid-template-columns: 1fr; } }

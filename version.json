@@ -1,8 +1,8 @@
 {
-  "version": "1.6.0",
-  "date": "09/11/2026",
+  "version": "1.7.0",
+  "date": "10/11/2026",
   "notes": [
-    "Corretto il controllo degli aggiornamenti: ora il tasto Aggiorna compare quando esce una nuova versione",
-    "L'app resta sulla versione installata finché non premi Aggiorna"
+    "Nuova guida passo passo per importare i calendari (Google, Apple, Outlook, Samsung)",
+    "Istruzioni dettagliate per la sincronizzazione automatica con Google Calendar"
   ]
 }

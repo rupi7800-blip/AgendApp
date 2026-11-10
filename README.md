@@ -23,6 +23,7 @@ Funziona nel browser e si installa sul telefono come una vera app (PWA), anche o
 - **Prossimi impegni**: riepilogo di oggi, settimana, importi da pagare, elementi in ritardo e ricerca.
 - **Tema** chiaro, scuro o automatico.
 - **Importazione da altri calendari**: file `.ics` o `.zip` (export di Google Calendar, Apple, Outlook, Samsung…), con ripetizioni e promemoria; reimportando non si creano doppioni.
+- **Guida all'importazione** nell'app (Impostazioni → Come importare i tuoi calendari) per Google, Apple, Outlook, Samsung.
 - **Sincronizzazione Google Calendar** automatica tramite un piccolo script Google (`google/AgendAppSync.gs`, istruzioni nell'app: Impostazioni → Google Calendar).
 - **Aggiornamenti**: quando esce una nuova versione compaiono il tasto **Aggiorna** e un avviso con le novità.
 - **Backup** (esporta/importa JSON) ed **esportazione calendario .ics** per Google Calendar, Apple Calendario e Outlook.

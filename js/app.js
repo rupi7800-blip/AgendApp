@@ -183,7 +183,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -650,6 +650,7 @@ function settingsView() {
     ${defs}
   </div>
   <div class="card"><h3>Importa da altri calendari</h3>
+    <div class="set-row"><div class="lbl">Come importare i tuoi calendari<small>Guida passo passo per Google, Apple, Outlook, Samsung e altri</small></div><button class="btn sm primary" data-act="import-guide">${I('book')}Guida</button></div>
     <div class="set-row"><div class="lbl">Google Calendar<small>${S.settings.gsync && S.settings.gsync.url ? (S.settings.gsync.error ? '<span class="danger">Errore: ' + esc(S.settings.gsync.error) + '</span>' : 'Collegato' + (S.settings.gsync.last ? ' · aggiornato ' + relTime(S.settings.gsync.last) : '')) : 'Sincronizzazione automatica dei tuoi calendari Google'}</small></div>
       ${S.settings.gsync && S.settings.gsync.url ? `<button class="btn sm" data-act="gs-sync" aria-label="Sincronizza ora">${I('repeat')}</button>` : ''}<button class="btn sm" data-act="google-open">${S.settings.gsync && S.settings.gsync.url ? 'Gestisci' : 'Collega'}</button></div>
     <div class="set-row"><div class="lbl">File di calendario (.ics o .zip)<small>Da Google (Impostazioni → Importa ed esporta → Esporta), Apple, Outlook, Samsung e altri</small></div><button class="btn sm" data-act="import-ics">${I('upload')}Importa</button></div>
@@ -1442,6 +1443,71 @@ function openImportSheet(cals) {
   });
 }
 
+
+/* ---------------- Guida all'importazione ---------------- */
+function openImportGuide() {
+  const step = (n, t) => `<li><b>${n}</b> ${t}</li>`;
+  const sec = (icon, title, sub, body, open) => `<details class="guide" ${open ? 'open' : ''}><summary><span class="ibox" style="--tc:var(--brand-2)">${I(icon)}</span><span class="grow"><b>${title}</b><small>${sub}</small></span>${I('chevR', 'chev')}</summary><div class="guide-body">${body}</div></details>`;
+  openSheet({
+    build: () => ({
+      title: 'Come importare i calendari<span class="sub">Due modi: file una tantum oppure sincronizzazione automatica</span>',
+      body: `
+        <div class="guide-intro">
+          <div><b>${I('upload')} Importa file</b><span>Copi una volta gli eventi da un file .ics o .zip. Va bene per tutti i calendari.</span></div>
+          <div><b>${I('repeat')} Sincronizza Google</b><span>AgendApp legge da sola i tuoi calendari Google e li tiene aggiornati.</span></div>
+        </div>
+        ${sec('calendar', 'Google Calendar — file', 'Il modo più semplice, da computer', `<ol>
+          ${step('1.', 'Da un computer apri <b>calendar.google.com</b> con il tuo account.')}
+          ${step('2.', 'In alto a destra tocca l\'ingranaggio ⚙ → <b>Impostazioni</b>.')}
+          ${step('3.', 'Nel menu a sinistra scegli <b>Importa ed esporta</b> → <b>Esporta</b>.')}
+          ${step('4.', 'Si scarica un file <b>.zip</b> con tutti i tuoi calendari: non serve aprirlo.')}
+          ${step('5.', 'Porta il file sul telefono (email, Drive, WhatsApp) oppure apri AgendApp dal computer.')}
+          ${step('6.', 'In AgendApp: <b>Impostazioni → File di calendario → Importa</b> e scegli il file.')}
+          ${step('7.', 'Scegli quali calendari tenere, come importarli e in quale area, poi <b>Importa</b>.')}
+        </ol><p class="hint">Dal telefono: apri Chrome, attiva “Sito desktop” dal menu ⋮ e segui gli stessi passi.</p>`, true)}
+        ${sec('calendar', 'Google Calendar — un solo calendario', 'Senza scaricare tutto', `<ol>
+          ${step('1.', 'Su calendar.google.com → ⚙ <b>Impostazioni</b> → a sinistra clicca il nome del calendario.')}
+          ${step('2.', 'Scorri fino a <b>Integra calendario</b> e copia l\'<b>Indirizzo segreto in formato iCal</b>.')}
+          ${step('3.', 'Incolla l\'indirizzo nella barra del browser: si scarica un file <b>.ics</b>.')}
+          ${step('4.', 'In AgendApp importa quel file come sopra.')}
+        </ol><p class="hint">Non condividere l'indirizzo segreto: chi lo ha può leggere quel calendario.</p>`)}
+        ${sec('repeat', 'Google Calendar — sincronizzazione automatica', 'Si configura una volta, poi va da sola', `<ol>
+          ${step('1.', 'In AgendApp: <b>Impostazioni → Google Calendar → Collega</b>.')}
+          ${step('2.', 'Tocca <b>Copia codice script</b>.')}
+          ${step('3.', 'Da computer apri <b>script.google.com</b> → <b>Nuovo progetto</b>, cancella il testo presente e incolla il codice.')}
+          ${step('4.', 'Nella riga <code>CHIAVE</code> sostituisci “cambia-questa-chiave” con una parola segreta tua e salva 💾.')}
+          ${step('5.', 'In alto scegli la funzione <b>prova</b> e premi ▶ <b>Esegui</b>. Concedi l\'accesso al calendario (se compare “App non verificata”: <i>Avanzate → Vai al progetto</i>).')}
+          ${step('6.', '<b>Esegui il deployment → Nuovo deployment</b> → icona ⚙ → <b>App web</b>. “Esegui come: <b>Me</b>”, “Chi ha accesso: <b>Chiunque</b>” → <b>Esegui il deployment</b>.')}
+          ${step('7.', 'Copia l\'<b>URL dell\'app web</b> (finisce con <code>/exec</code>).')}
+          ${step('8.', 'In AgendApp incolla URL e chiave, scegli l\'area e premi <b>Salva e sincronizza</b>.')}
+        </ol><p class="hint">Gli eventi arrivano dagli ultimi 30 giorni ai prossimi 12 mesi e si aggiornano ogni 30 minuti quando apri l'app. Lo script legge soltanto: non modifica il tuo calendario.</p>`)}
+        ${sec('calendar', 'Apple (iPhone, iPad, Mac)', 'Esportazione da Mac o da iCloud', `<ol>
+          ${step('1.', 'Su <b>Mac</b>: apri Calendario, seleziona il calendario a sinistra → menu <b>File → Esporta → Esporta…</b> e salva il file .ics.')}
+          ${step('2.', 'Senza Mac: su iPhone apri <b>Calendario → Calendari</b>, tocca ⓘ accanto al calendario, attiva <b>Calendario pubblico</b> e <b>Condividi link</b>. Apri il link nel browser cambiando <code>webcal://</code> in <code>https://</code>: si scarica il file .ics.')}
+          ${step('3.', 'In AgendApp importa il file.')}
+        </ol><p class="hint">Dopo l'esportazione puoi disattivare “Calendario pubblico”.</p>`)}
+        ${sec('calendar', 'Outlook / Microsoft 365', 'Outlook.com o Outlook per computer', `<ol>
+          ${step('1.', '<b>Outlook.com</b>: ⚙ Impostazioni → <b>Calendario → Calendari condivisi</b> → in “Pubblica un calendario” scegli il calendario e “Può visualizzare tutti i dettagli” → <b>Pubblica</b>. Apri il link <b>ICS</b> nel browser per scaricare il file.')}
+          ${step('2.', '<b>Outlook per Windows</b>: apri il calendario → <b>File → Salva calendario</b> → scegli l\'intervallo di date con “Altre opzioni” e salva il file .ics.')}
+          ${step('3.', 'In AgendApp importa il file.')}
+        </ol>`)}
+        ${sec('calendar', 'Samsung, Xiaomi e altri Android', 'Di solito sono collegati a Google', `<ol>
+          ${step('1.', 'Apri il calendario del telefono → Impostazioni → <b>Gestisci calendari / Account</b> e controlla dove sono salvati gli eventi.')}
+          ${step('2.', 'Se sono su <b>Google</b>: usa i metodi Google qui sopra.')}
+          ${step('3.', 'Se sono salvati <b>sul telefono</b>: in Samsung Calendario puoi spostarli su Google (seleziona gli eventi → Sposta → account Google), poi esporta da Google.')}
+        </ol>`)}
+        ${sec('note', 'Domande frequenti', '', `<ul>
+          <li><b>Se importo due volte lo stesso file?</b> Gli eventi vengono aggiornati, non duplicati.</li>
+          <li><b>Le ripetizioni e i promemoria?</b> Vengono mantenuti; se un evento non ha promemoria usa quelli predefiniti della sua tipologia.</li>
+          <li><b>I compleanni?</b> Con “Importa come: Automatico” gli eventi con “compleanno” o “birthday” nel titolo diventano Compleanni.</li>
+          <li><b>Eventi vecchi?</b> L'opzione “Salta gli eventi già passati” evita di riempire l'agenda di cose finite.</li>
+          <li><b>Posso cancellare quelli importati?</b> Sì, come qualsiasi altro impegno. Per Google sincronizzato usa “Scollega”, che può eliminarli tutti insieme.</li>
+        </ul>`)}`,
+      foot: `<div class="btns"><button class="btn grow" data-act="google-open">${I('repeat')}Collega Google</button><button class="btn primary grow" data-act="import-ics">${I('upload')}Importa file</button></div>`
+    })
+  });
+}
+
 /* ---------------- Sincronizzazione Google Calendar (Apps Script) ---------------- */
 const gs = () => S.settings.gsync || (S.settings.gsync = { url: '', key: '', category: 'personale', auto: true, excluded: [], calendars: [], last: 0, error: '' });
 let syncing = false;
@@ -1509,7 +1575,7 @@ function openGoogleSheet() {
             <li><b>Pubblica → Nuovo deployment → App web</b>: “Esegui come: Me”, “Chi ha accesso: Chiunque”.</li>
             <li>Copia l'URL dell'app web e incollalo qui con la stessa chiave.</li>
           </ol>
-          <div class="btns" style="margin-top:10px"><button class="btn sm" data-act="gs-copy">${I('note')}Copia codice script</button></div>
+          <div class="btns" style="margin-top:10px"><button class="btn sm" data-act="gs-copy">${I('note')}Copia codice script</button><button class="btn sm" data-act="import-guide">${I('book')}Guida dettagliata</button></div>
         </div>
         <form id="gsform">
           <div class="field"><label for="gs-url">URL dell'app web</label><input class="inp" id="gs-url" name="url" value="${esc(g.url)}" placeholder="https://script.google.com/macros/s/…/exec" autocomplete="off" inputmode="url"></div>
@@ -1630,6 +1696,7 @@ const ACT = {
     pump();
   },
   'import-ics': () => pickCalendarFiles(),
+  'import-guide': () => openImportGuide(),
   'import-run': () => { const s = sheets[sheets.length - 1]; s && s.run && s.run(); },
   'google-open': () => openGoogleSheet(),
   'gs-save': () => { const s = sheets[sheets.length - 1]; s && s.saveG && s.saveG(); },
