@@ -77,6 +77,7 @@ const ICONS = {
   sliders: '<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/>',
+  link: '<circle cx="6" cy="12" r="3"/><circle cx="18" cy="6" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8.6 10.7 15.4 7.3M8.6 13.3l6.8 3.4"/>',
   pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0z"/><circle cx="12" cy="10" r="3"/>',
   repeat: '<path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/>',
   edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
@@ -183,7 +184,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.8.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -224,6 +225,7 @@ try { if (localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(S)
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(S)); }
   catch (e) { toast('Impossibile salvare i dati sul dispositivo'); }
+  if (window.Ponte) Ponte.cambiato();
 }
 const getItem = id => S.items.find(i => i.id === id);
 const getVeh = id => S.vehicles.find(v => v.id === id);
@@ -457,6 +459,7 @@ function rowHtml(it, occ, o = {}) {
   if (it.repeat && it.repeat !== 'none' && it.type !== 'compleanno') meta.push(`<span>${I('repeat')}${repLabel(it.repeat)}</span>`);
   if (it.source === 'google') meta.push(`<span>${I('repeat')}Google${it.calName ? ' · ' + esc(it.calName) : ''}</span>`);
   else if (it.source === 'ics' && it.calName) meta.push(`<span>${I('download')}${esc(it.calName)}</span>`);
+  else if (it.ponteDa && window.Ponte) meta.push(`<span>${I('link')}da ${esc(Ponte.nome(it.ponteDa))}</span>`);
   if (!it.notify || !it.notify.enabled) meta.push(`<span>${I('belloff')}</span>`);
   const side = [];
   if (it.type === 'pagamento' && it.amount) side.push(`<span class="amount">${EUR.format(it.amount)}</span>`);
@@ -648,6 +651,9 @@ function settingsView() {
   <div class="card"><h3>Avvisi predefiniti per tipologia</h3>
     <p class="hint" style="margin:2px 0 4px">Valgono per i nuovi elementi. Ogni appuntamento, scadenza o compleanno si può poi personalizzare singolarmente.</p>
     ${defs}
+  </div>
+  <div class="card"><h3>Collega le app</h3>
+    <div class="set-row"><div class="lbl">Smistino e Cartellina<small>${window.Ponte && Ponte.attivo() ? 'Collaborazione attiva: scadenze, visite ed esami arrivano qui da soli' : 'Ricevi qui le scadenze trovate da Smistino e le visite di Cartellina'}</small></div><button class="btn sm primary" data-act="ponte">${I('link')}${window.Ponte && Ponte.attivo() ? 'Gestisci' : 'Attiva'}</button></div>
   </div>
   <div class="card"><h3>Importa da altri calendari</h3>
     <div class="set-row"><div class="lbl">Come importare i tuoi calendari<small>Guida passo passo per Google, Apple, Outlook, Samsung e altri</small></div><button class="btn sm primary" data-act="import-guide">${I('book')}Guida</button></div>
@@ -1639,6 +1645,7 @@ const ACT = {
     const it = getItem(el.dataset.id), o = el.dataset.occ;
     if (!it) return;
     if (it.done[o]) delete it.done[o]; else it.done[o] = true;
+    if (it.ponte) it.ponteTs = Date.now();
     save(); refreshAll();
     toast(it.done[o] ? (it.type === 'pagamento' ? 'Pagato ✓' : 'Fatto ✓') : 'Segnato come da fare');
   },
@@ -1648,6 +1655,7 @@ const ACT = {
     if (!it) return;
     const rep = it.repeat && it.repeat !== 'none';
     if (!confirm(`Eliminare “${it.title}”${rep ? ' e tutte le sue ripetizioni' : ''}?`)) return;
+    if (it.ponte && window.Ponte) Ponte.ignora(it.ponte);
     S.items = S.items.filter(x => x.id !== it.id);
     S.snoozes = S.snoozes.filter(s => s.id !== it.id);
     save(); closeSheet(); refreshAll(); toast('Eliminato');
@@ -1715,6 +1723,7 @@ const ACT = {
     S.settings.gsync = null;
     save(); closeSheet(); refreshAll(); toast('Google Calendar scollegato');
   },
+  ponte: () => { if (window.Ponte) Ponte.apri(); },
   'check-update': () => {
     if (!window.AppUpdate) { toast('Controllo aggiornamenti non disponibile'); return; }
     window.AppUpdate.check().then(found => { if (!found) toast(`Hai già l'ultima versione (${APP_VERSION})`); });
@@ -1784,9 +1793,91 @@ $('#view').addEventListener('touchend', e => {
   if (Math.abs(dx) > 70 && Math.abs(dy) < 50) shiftCursor(dx < 0 ? 1 : -1);
 }, { passive: true });
 
+/* ---------------- Ponte: collaborazione con Smistino e Cartellina ---------------- */
+const normT = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
+function pontePubblica() {
+  // ad AgendApp interessa ricevere; condivide con Cartellina gli impegni dell'area Salute
+  // e con Smistino lo stato "fatto" delle sue scadenze
+  const lim = ds(addDays(todayD(), -30)), eventi = [], fatti = {};
+  for (const it of S.items) {
+    if (it.ponte) { fatti[it.ponte] = { f: isDone(it, it.date), ts: it.ponteTs || 0 }; continue; }
+    if (it.category !== 'salute') continue;
+    const occ = it.repeat && it.repeat !== 'none' ? nextOcc(it, addDays(todayD(), -1)) : it.date;
+    if (!occ || occ < lim) continue;
+    eventi.push({ id: it.id, tipo: it.type, titolo: it.title, data: occ, ora: isAllDay(it) ? '' : it.time, oraFine: it.endTime || '', luogo: it.location || '', note: it.notes || '', area: it.category, fatto: isDone(it, occ) });
+  }
+  return { eventi, fatti };
+}
+// lo stesso impegno arrivato da due app (es. visita trovata sia da Smistino sia da Cartellina)
+function ponteDoppione(e, da) {
+  const t = normT(e.titolo);
+  return S.items.find(x => x.ponte && x.ponteDa !== da && x.date === e.data &&
+    ((e.ora && x.time === e.ora) || (!e.ora && isAllDay(x) && (normT(x.title) === t || normT(x.title).includes(t) || t.includes(normT(x.title))))));
+}
+function ponteRicevi(da, dati) {
+  let nuovi = 0, agg = 0, tolti = 0, fatti = 0;
+  const visti = new Set(), lim = ds(addDays(todayD(), -30));
+  for (const e of dati.eventi || []) {
+    if (!e || !e.id || !e.data) continue;
+    const uidP = da + ':' + e.id;
+    visti.add(uidP);
+    if (Ponte.ignorato(uidP)) continue;
+    const type = TYPES[e.tipo] ? e.tipo : 'appuntamento';
+    const loc = [e.luogo, e.indirizzo].filter(Boolean).filter((x, i, a) => a.indexOf(x) === i).join(', ');
+    const v = { title: e.titolo || TYPES[type].label, date: e.data, allDay: !e.ora, time: e.ora || '', endTime: e.oraFine || '', location: loc, notes: e.note || '' };
+    let it = S.items.find(x => x.ponte === uidP);
+    if (!it) {
+      if (ponteDoppione(e, da)) continue;
+      it = newItem({ type, date: e.data, category: CATS[e.area] ? e.area : 'altro' });
+      Object.assign(it, v, { amount: e.importo || '', ponte: uidP, ponteDa: da, ponteTs: e.fattoTs || 0, source: 'ponte' });
+      if (e.fatto) it.done[e.data] = true;
+      S.items.push(it); resetFired(it); nuovi++;
+      continue;
+    }
+    const prima = JSON.stringify([it.title, it.date, it.time, it.endTime, it.location, it.notes]);
+    if (it.date !== v.date && it.done[it.date]) { delete it.done[it.date]; it.done[v.date] = true; }
+    Object.assign(it, v);
+    if (e.importo && !it.amount) it.amount = e.importo;
+    if (prima !== JSON.stringify([it.title, it.date, it.time, it.endTime, it.location, it.notes])) { resetFired(it); agg++; }
+    // "fatto" segnato nell'altra app più di recente che qui
+    if ((e.fattoTs || 0) > (it.ponteTs || 0) && !!e.fatto !== isDone(it, it.date)) {
+      if (e.fatto) it.done[it.date] = true; else delete it.done[it.date];
+      it.ponteTs = e.fattoTs; fatti++;
+    }
+  }
+  // eliminati nell'altra app (solo nel periodo condiviso)
+  const prima = S.items.length;
+  S.items = S.items.filter(x => !(x.ponteDa === da && !visti.has(x.ponte) && x.date >= lim));
+  tolti = prima - S.items.length;
+  const n = nuovi + agg + tolti + fatti;
+  if (n) save();
+  const parti = [];
+  if (nuovi) parti.push(`${nuovi} nuov${nuovi === 1 ? 'o' : 'i'} in agenda`);
+  if (agg) parti.push(`${agg} aggiornat${agg === 1 ? 'o' : 'i'}`);
+  if (tolti) parti.push(`${tolti} tolt${tolti === 1 ? 'o' : 'i'}`);
+  if (fatti) parti.push(`${fatti} segnat${fatti === 1 ? 'o' : 'i'} come fatt${fatti === 1 ? 'o' : 'i'}`);
+  return { n, testo: parti.join(', ') };
+}
+function ponteScollega(da, prova) {
+  const n = S.items.filter(x => x.ponteDa === da).length;
+  if (!prova && n) { S.items = S.items.filter(x => x.ponteDa !== da); save(); }
+  return n;
+}
+function avviaPonte() {
+  if (!window.Ponte) return;
+  Ponte.init({
+    app: 'agendapp', pubblica: pontePubblica, ricevi: ponteRicevi, scollega: ponteScollega, dopo: refreshAll, toast: m => toast(m),
+    descr: {
+      smistino: 'Ti manda le scadenze, i pagamenti e gli appuntamenti trovati nelle email e nei messaggi. Quando li segni fatti qui, lo sa anche Smistino.',
+      cartellina: 'Ti manda visite, esami e interventi. Gli impegni che metti qui nell\'area Salute finiscono nell\'agenda di Cartellina.'
+    }
+  });
+}
+
 /* ---------------- Avvio ---------------- */
 applyTheme();
 render();
+avviaPonte();
 setTimeout(checkReminders, 800);
 setInterval(checkReminders, 15000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderChrome(); autoSync(); } });

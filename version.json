@@ -1,8 +1,10 @@
 {
-  "version": "1.7.0",
+  "version": "1.8.0",
   "date": "10/11/2026",
   "notes": [
-    "Nuova guida passo passo per importare i calendari (Google, Apple, Outlook, Samsung)",
-    "Istruzioni dettagliate per la sincronizzazione automatica con Google Calendar"
+    "Nuovo: Collega le app — AgendApp lavora insieme a Smistino e Cartellina",
+    "Le scadenze, i pagamenti e gli appuntamenti trovati da Smistino e le visite di Cartellina arrivano in agenda da soli",
+    "Condivisione automatica o manuale, ed Esporta/Importa pacchetto per altri dispositivi",
+    "Corretto: aggiornare un'app non cancella più la versione installata delle altre"
   ]
 }
