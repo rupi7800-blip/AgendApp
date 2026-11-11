@@ -1,10 +1,9 @@
 {
-  "version": "1.8.0",
-  "date": "10/11/2026",
+  "version": "1.9.0",
+  "date": "11/11/2026",
   "notes": [
-    "Nuovo: Collega le app — AgendApp lavora insieme a Smistino e Cartellina",
-    "Le scadenze, i pagamenti e gli appuntamenti trovati da Smistino e le visite di Cartellina arrivano in agenda da soli",
-    "Condivisione automatica o manuale, ed Esporta/Importa pacchetto per altri dispositivi",
-    "Corretto: aggiornare un'app non cancella più la versione installata delle altre"
+    "Nuovo: AgendApp si collega anche a StudioFacile",
+    "Rette, prenotazioni degli appelli, esami e lezioni di approfondimento arrivano in agenda nell'area Studio",
+    "Se li segni fatti in AgendApp, lo sa anche StudioFacile"
   ]
 }

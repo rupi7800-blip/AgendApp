@@ -653,7 +653,7 @@ function settingsView() {
     ${defs}
   </div>
   <div class="card"><h3>Collega le app</h3>
-    <div class="set-row"><div class="lbl">Smistino e Cartellina<small>${window.Ponte && Ponte.attivo() ? 'Collaborazione attiva: scadenze, visite ed esami arrivano qui da soli' : 'Ricevi qui le scadenze trovate da Smistino e le visite di Cartellina'}</small></div><button class="btn sm primary" data-act="ponte">${I('link')}${window.Ponte && Ponte.attivo() ? 'Gestisci' : 'Attiva'}</button></div>
+    <div class="set-row"><div class="lbl">Smistino, Cartellina e StudioFacile<small>${window.Ponte && Ponte.attivo() ? 'Collaborazione attiva: scadenze, visite, esami e appelli arrivano qui da soli' : 'Ricevi qui le scadenze di Smistino, le visite di Cartellina e le scadenze universitarie di StudioFacile'}</small></div><button class="btn sm primary" data-act="ponte">${I('link')}${window.Ponte && Ponte.attivo() ? 'Gestisci' : 'Attiva'}</button></div>
   </div>
   <div class="card"><h3>Importa da altri calendari</h3>
     <div class="set-row"><div class="lbl">Come importare i tuoi calendari<small>Guida passo passo per Google, Apple, Outlook, Samsung e altri</small></div><button class="btn sm primary" data-act="import-guide">${I('book')}Guida</button></div>
@@ -1793,7 +1793,7 @@ $('#view').addEventListener('touchend', e => {
   if (Math.abs(dx) > 70 && Math.abs(dy) < 50) shiftCursor(dx < 0 ? 1 : -1);
 }, { passive: true });
 
-/* ---------------- Ponte: collaborazione con Smistino e Cartellina ---------------- */
+/* ---------------- Ponte: collaborazione con Smistino, Cartellina e StudioFacile ---------------- */
 const normT = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 function pontePubblica() {
   // ad AgendApp interessa ricevere; condivide con Cartellina gli impegni dell'area Salute
@@ -1869,7 +1869,8 @@ function avviaPonte() {
     app: 'agendapp', pubblica: pontePubblica, ricevi: ponteRicevi, scollega: ponteScollega, dopo: refreshAll, toast: m => toast(m),
     descr: {
       smistino: 'Ti manda le scadenze, i pagamenti e gli appuntamenti trovati nelle email e nei messaggi. Quando li segni fatti qui, lo sa anche Smistino.',
-      cartellina: 'Ti manda visite, esami e interventi. Gli impegni che metti qui nell\'area Salute finiscono nell\'agenda di Cartellina.'
+      cartellina: 'Ti manda visite, esami e interventi. Gli impegni che metti qui nell\'area Salute finiscono nell\'agenda di Cartellina.',
+      studiofacile: 'Ti manda rette, prenotazioni degli appelli, esami e lezioni (e, se vuoi, la seduta di studio di ogni giorno). Quando li segni fatti qui, lo sa anche StudioFacile.'
     }
   });
 }

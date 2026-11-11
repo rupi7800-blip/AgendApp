@@ -1,6 +1,6 @@
 /* =========================================================
-   Ponte — fa collaborare AgendApp, Smistino e Cartellina
-   File identico nelle tre app (js/ponte.js).
+   Ponte — fa collaborare AgendApp, Smistino, Cartellina e StudioFacile
+   File identico in tutte le app (js/ponte.js).
 
    Come funziona
    - Ogni app pubblica un "pacchetto" con quello che condivide
@@ -25,7 +25,8 @@
   var APPS = {
     agendapp: { nome: 'AgendApp', colore: '#14244a', cartella: 'AgendApp' },
     smistino: { nome: 'Smistino', colore: '#5b4fe0', cartella: 'Smistino' },
-    cartellina: { nome: 'Cartellina', colore: '#1f9a87', cartella: 'Cartellina-' }
+    cartellina: { nome: 'Cartellina', colore: '#1f9a87', cartella: 'Cartellina-' },
+    studiofacile: { nome: 'StudioFacile', colore: '#2f6f5e', cartella: 'StudioFacile' }
   };
   var cfg = null, me = '', tPub = null, tPull = null, inCorso = false;
 
@@ -141,7 +142,7 @@
     try {
       var file = new File([testo], nome, { type: 'application/json' });
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], title: 'Pacchetto ' + APPS[me].nome, text: 'Da importare in AgendApp, Smistino o Cartellina' }).catch(function () {});
+        navigator.share({ files: [file], title: 'Pacchetto ' + APPS[me].nome, text: 'Da importare in un\'altra delle tue app collegate' }).catch(function () {});
         return;
       }
     } catch (e) { /* passa al download */ }
@@ -163,7 +164,7 @@
           if (!c || (p.ts || 0) >= (c.ts || 0)) scrivi(PREF + 'pkt.' + p.app, p);
           x.con[p.app] = true; ok++;
         });
-        if (!ok) { toast('Il file non è un pacchetto di AgendApp, Smistino o Cartellina'); return; }
+        if (!ok) { toast('Il file non è un pacchetto delle tue app collegate'); return; }
         if (!x.attivo) { x.attivo = true; }
         salvaImp(x);
         var n = ricevi(false, true);
