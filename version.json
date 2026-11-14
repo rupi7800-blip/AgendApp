@@ -1,9 +1,10 @@
 {
-  "version": "1.9.0",
-  "date": "11/11/2026",
+  "version": "2.0.0",
+  "date": "14/11/2026",
   "notes": [
-    "Nuovo: AgendApp si collega anche a StudioFacile",
-    "Rette, prenotazioni degli appelli, esami e lezioni di approfondimento arrivano in agenda nell'area Studio",
-    "Se li segni fatti in AgendApp, lo sa anche StudioFacile"
+    "Nuova grafica: più chiara, moderna e leggibile",
+    "Ripetizioni: ora puoi modificare o eliminare solo una data, oppure quella e le successive, senza toccare il resto della serie",
+    "Legenda delle aree della vita nel calendario: tocca un'area per nasconderla o mostrarla",
+    "Notifiche anche ad app chiusa: attivale in Impostazioni → Notifiche"
   ]
 }

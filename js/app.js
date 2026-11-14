@@ -184,7 +184,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '2.0.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -213,6 +213,7 @@ function migrate(raw) {
   s.settings.defaults = Object.assign(clone(DEF_SETTINGS.defaults), s.settings.defaults || {});
   delete s.settings.defaults.svago; delete s.settings.defaults.studio;
   ['items', 'vehicles', 'snoozes', 'log'].forEach(k => { if (!Array.isArray(s[k])) s[k] = []; });
+  if (!Array.isArray(s.settings.hiddenCats)) s.settings.hiddenCats = [];
   ['dayNotes', 'fired'].forEach(k => { if (!s[k] || typeof s[k] !== 'object') s[k] = {}; });
   s.items.forEach(it => {
     if (it.type === 'svago' || it.type === 'studio') { it.category = it.type; it.type = 'appuntamento'; }
@@ -222,10 +223,14 @@ function migrate(raw) {
 let S;
 try { S = migrate(JSON.parse(localStorage.getItem(KEY))); } catch (e) { S = blankState(); }
 try { if (localStorage.getItem(KEY)) localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { /* ignora */ }
+function persist() {
+  try { localStorage.setItem(KEY, JSON.stringify(S)); return true; }
+  catch (e) { toast('Impossibile salvare i dati sul dispositivo'); return false; }
+}
 function save() {
-  try { localStorage.setItem(KEY, JSON.stringify(S)); }
-  catch (e) { toast('Impossibile salvare i dati sul dispositivo'); }
+  persist();
   if (window.Ponte) Ponte.cambiato();
+  if (typeof schedulePushSync === 'function') schedulePushSync();
 }
 const getItem = id => S.items.find(i => i.id === id);
 const getVeh = id => S.vehicles.find(v => v.id === id);
@@ -234,6 +239,10 @@ const ui = { tab: 'cal', view: S.settings.startView, cursor: todayD(), section: 
 
 /* ---------------- Ricorrenze ---------------- */
 function expand(it, from, to) {
+  const out = expandRaw(it, from, to);
+  return it.skip ? out.filter(o => !it.skip[o]) : out;
+}
+function expandRaw(it, from, to) {
   const start = pd(it.date), out = [];
   const r = it.type === 'compleanno' ? { freq: 'yearly', n: 1 } : repInfo(it.repeat);
   if (!r) { if (start >= from && start <= to) out.push(it.date); return out; }
@@ -265,6 +274,7 @@ function expand(it, from, to) {
   return out;
 }
 const isAllDay = it => it.allDay || !it.time;
+const isRecurring = it => it.type === 'compleanno' || (!!it.repeat && it.repeat !== 'none');
 function occTime(it, occ) {
   const d = pd(occ);
   const [h, m] = (isAllDay(it) ? S.settings.allDayTime : it.time).split(':').map(Number);
@@ -309,7 +319,7 @@ function applyTheme() {
   const t = S.settings.theme === 'auto' ? (mq.matches ? 'dark' : 'light') : S.settings.theme;
   document.documentElement.dataset.theme = t;
   const m = document.querySelector('meta[name="theme-color"]');
-  if (m) m.content = t === 'dark' ? '#0d1220' : '#14244a';
+  if (m) m.content = t === 'dark' ? '#141a29' : '#ffffff';
 }
 mq.addEventListener && mq.addEventListener('change', applyTheme);
 
@@ -361,10 +371,14 @@ function calTitle() {
   if (ui.view === 'month') return `${MESI[c.getMonth()]} <small>${c.getFullYear()}</small>`;
   return `${c.getFullYear()}`;
 }
+const calFilter = it => !(S.settings.hiddenCats || []).includes(it.category);
 function calendarView() {
   const seg = [['week', 'Settimana'], ['month', 'Mese'], ['year', 'Anno']].map(([k, l]) => `<button data-act="view" data-v="${k}" class="${ui.view === k ? 'on' : ''}">${l}</button>`).join('');
   const body = ui.view === 'week' ? weekView() : ui.view === 'month' ? monthView() : yearView();
   const legend = TYPE_ORDER.map(t => `<span>${SH(t, 'var(--ink-2)')}${TYPES[t].plural}</span>`).join('');
+  const hidden = new Set(S.settings.hiddenCats || []);
+  const used = new Set(S.items.map(i => i.category));
+  const areas = Object.entries(CATS).map(([k, c]) => `<button class="area-pill ${hidden.has(k) ? 'off' : ''} ${used.has(k) ? '' : 'unused'}" data-act="area-toggle" data-cat="${k}" style="--tc:${c.color}" aria-pressed="${hidden.has(k) ? 'false' : 'true'}" title="${hidden.has(k) ? 'Mostra' : 'Nascondi'} ${c.label}"><i></i>${c.label}</button>`).join('');
   return `<div class="cal-head">
       <div class="seg" role="tablist">${seg}</div>
       <div class="cal-nav">
@@ -374,8 +388,12 @@ function calendarView() {
         <button class="pill" data-act="today">Oggi</button>
       </div>
     </div>
+    <div class="area-bar" aria-label="Legenda aree della vita">
+      <div class="area-bar-head"><span>Aree della vita</span>${hidden.size ? `<button class="link-btn" data-act="area-all">Mostra tutte (${hidden.size} nascost${hidden.size === 1 ? 'a' : 'e'})</button>` : '<small>Tocca un\'area per nasconderla</small>'}</div>
+      <div class="area-pills">${areas}</div>
+    </div>
     <div id="cal-body">${body}</div>
-    ${ui.view !== 'year' ? `<div class="legend">${legend}</div>` : ''}`;
+    <div class="legend"><span class="legend-t">Forme</span>${legend}</div>`;
 }
 function evLine(e) {
   const it = e.it, done = isDone(it, e.occ);
@@ -386,7 +404,7 @@ function evLine(e) {
   return `<div class="ev ${done ? 'done' : ''}" style="--tc:${catColor(it)}">${SH(it.type, 'var(--tc)')}${t}<span class="n">${name}</span></div>`;
 }
 function weekView() {
-  const s = startOfWeek(ui.cursor), idx = buildIndex(s, addDays(s, 6)), tk = ds(todayD());
+  const s = startOfWeek(ui.cursor), idx = buildIndex(s, addDays(s, 6), calFilter), tk = ds(todayD());
   let html = '<div class="week">';
   for (let i = 0; i < 7; i++) {
     const d = addDays(s, i), k = ds(d), list = idx[k] || [], hol = holidayOf(k);
@@ -402,7 +420,7 @@ function monthView() {
   const first = new Date(y, m, 1), s = startOfWeek(first);
   const weeks = Math.ceil((wd(first) + daysIn(y, m)) / 7);
   const e = addDays(s, weeks * 7 - 1);
-  const idx = buildIndex(s, e), tk = ds(todayD());
+  const idx = buildIndex(s, e, calFilter), tk = ds(todayD());
   let cells = '';
   for (let i = 0; i < weeks * 7; i++) {
     const d = addDays(s, i), k = ds(d), list = idx[k] || [], hol = holidayOf(k);
@@ -419,7 +437,7 @@ function monthView() {
   return `<div class="month"><div class="mhead">${GG.map(g => `<div>${g}</div>`).join('')}</div><div class="mgrid">${cells}</div></div>`;
 }
 function yearView() {
-  const y = ui.cursor.getFullYear(), idx = buildIndex(new Date(y, 0, 1), new Date(y, 11, 31)), tk = ds(todayD()), now = todayD();
+  const y = ui.cursor.getFullYear(), idx = buildIndex(new Date(y, 0, 1), new Date(y, 11, 31), calFilter), tk = ds(todayD()), now = todayD();
   let html = '<div class="year">';
   for (let m = 0; m < 12; m++) {
     const first = new Date(y, m, 1);
@@ -624,6 +642,17 @@ function vehicleCard(v) {
 }
 
 /* ---------------- Impostazioni ---------------- */
+function pushRow() {
+  const P = S.settings.push || {}, on = !!P.on;
+  let st;
+  if (!pushSupported()) st = isIOS && !isStandalone() ? 'Su iPhone funziona solo con AgendApp aggiunta alla schermata Home (Condividi → Aggiungi a Home)' : 'Non supportate da questo browser';
+  else if (!on) st = 'Ricevi i promemoria anche con l\'app chiusa o il telefono in standby';
+  else if (P.error) st = `<span class="danger">Problema: ${esc(P.error)}</span>`;
+  else st = `Attive · ${P.n || 0} promemoria in programma${P.last ? ' · aggiornate ' + relTime(P.last) : ''}`;
+  return `<div class="set-row highlight"><div class="lbl"><span class="lbl-ic">${I('bell')}</span>Notifiche ad app chiusa<small>${st}</small></div>
+      ${on ? `<button class="btn sm" data-act="push-test">Prova</button>` : ''}<label class="switch"><input type="checkbox" data-set="push" ${on ? 'checked' : ''} ${pushSupported() ? '' : 'disabled'}><span></span></label></div>
+    ${on ? '' : `<p class="hint" style="margin:-4px 0 10px">Per consegnarti gli avvisi all'ora giusta, titolo, orario e luogo dei promemoria dei prossimi ${PUSH_DAYS} giorni vengono affidati a un piccolo server di AgendApp (in Europa). Il resto dei dati resta sul telefono.</p>`}`;
+}
 function settingsView() {
   const st = S.settings;
   const perm = 'Notification' in window ? Notification.permission : 'unsupported';
@@ -642,7 +671,8 @@ function settingsView() {
       <select class="inp" style="width:auto" data-set="startView">${[['week', 'Settimana'], ['month', 'Mese'], ['year', 'Anno']].map(([k, l]) => `<option value="${k}" ${st.startView === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
   </div>
   <div class="card"><h3>Notifiche</h3>
-    <div class="set-row"><div class="lbl">Notifiche di sistema<small>Avvisi anche quando l'app è in secondo piano · Stato: ${permTxt}</small></div>
+    ${pushRow()}
+    <div class="set-row"><div class="lbl">Notifiche di sistema<small>Avvisi del telefono quando l'app è in secondo piano · Stato: ${permTxt}</small></div>
       <label class="switch"><input type="checkbox" data-set="systemNotif" ${st.systemNotif && perm === 'granted' ? 'checked' : ''} ${perm === 'unsupported' ? 'disabled' : ''}><span></span></label></div>
     <div class="set-row"><div class="lbl">Orario avvisi per eventi “tutto il giorno”<small>Usato per scadenze, pagamenti e compleanni senza orario</small></div>
       <input type="time" class="inp" style="width:auto" data-set="allDayTime" value="${st.allDayTime}"></div>
@@ -840,17 +870,21 @@ function syncForm(form) {
 function openForm(it, preset = {}, occ = null) {
   const isNew = !it;
   const d = isNew ? newItem(preset) : clone(it);
+  const series = !isNew && occ && isRecurring(it);
+  if (!isNew && occ) d.date = occ; // mostra la data dell'occorrenza toccata
   const T0 = TYPES[d.type];
   openSheet({
     build: () => ({
       title: isNew ? `Nuovo elemento` : `Modifica ${T0.label.toLowerCase()}`,
-      body: formBody(d, isNew, occ),
-      foot: `<div class="btns">${isNew ? '' : `<button class="btn danger" data-act="item-delete" data-id="${d.id}" aria-label="Elimina">${I('trash')}</button><button class="btn" data-act="item-dup" data-id="${d.id}" aria-label="Duplica">Duplica</button>`}<span class="grow"></span><button class="btn" data-act="sheet-close">Annulla</button><button class="btn primary" data-act="item-save">${I('check')}Salva</button></div>`
+      body: (series && it.type !== 'compleanno' ? `<div class="series-note">${I('repeat')}<div><b>Fa parte di una serie</b> · ${repLabel(it.repeat)}<br><span>Stai modificando ${fmtMed(occ)}. Quando salvi scegli se cambiare solo questa data, anche le successive o tutta la serie.</span></div></div>` : '') + formBody(d, isNew, occ),
+      foot: `<div class="btns">${isNew ? '' : `<button class="btn danger" data-act="item-delete" data-id="${d.id}" data-occ="${occ || ''}" aria-label="Elimina">${I('trash')}</button><button class="btn" data-act="item-dup" data-id="${d.id}" aria-label="Duplica">Duplica</button>`}<span class="grow"></span><button class="btn" data-act="sheet-close">Annulla</button><button class="btn primary" data-act="item-save">${I('check')}Salva</button></div>`
     }),
     mount(w, sh) {
       const form = $('#itemform', w);
       let lastType = d.type;
       syncForm(form);
+      const snap = () => { const fd = new FormData(form); fd.delete('isDone'); return JSON.stringify([...fd.entries()]); };
+      const initial = snap();
       form.addEventListener('change', e => {
         if (e.target.name === 'type' && isNew) {
           const t = e.target.value, def = S.settings.defaults[t];
@@ -868,7 +902,7 @@ function openForm(it, preset = {}, occ = null) {
         syncForm(form);
       });
       form.addEventListener('submit', e => { e.preventDefault(); sh.save(); });
-      sh.save = () => {
+      sh.save = async () => {
         const fd = new FormData(form);
         const title = (fd.get('title') || '').trim();
         if (!title) { form.elements.title.focus(); toast(fd.get('type') === 'compleanno' ? 'Inserisci il nome' : 'Inserisci un titolo'); return; }
@@ -877,7 +911,7 @@ function openForm(it, preset = {}, occ = null) {
         let allDay = type === 'compleanno' || fd.get('allDay') === 'on';
         const time = fd.get('time') || '';
         if (!allDay && !time) allDay = true;
-        const out = Object.assign(d, {
+        const v = {
           type, title, category: fd.get('category') || 'altro',
           vehicleId: fd.get('category') === 'mezzi' ? (fd.get('vehicleId') || '') : '',
           date: fd.get('date'), allDay, time: allDay ? '' : time, endTime: !allDay && TIMED.has(type) ? (fd.get('endTime') || '') : '',
@@ -891,17 +925,100 @@ function openForm(it, preset = {}, occ = null) {
             reminders: fd.getAll('n_rem').map(Number).sort((a, b) => b - a),
             sound: fd.get('n_sound') === 'on', vibrate: fd.get('n_vibrate') === 'on'
           }
-        });
-        if (Number.isNaN(out.amount)) out.amount = '';
-        if (occ && form.elements.isDone) { if (form.elements.isDone.checked) out.done[occ] = true; else delete out.done[occ]; }
-        if (isNew) S.items.push(out); else S.items[S.items.findIndex(x => x.id === out.id)] = out;
-        resetFired(out);
+        };
+        if (Number.isNaN(v.amount)) v.amount = '';
+        const doneOn = form.elements.isDone ? form.elements.isDone.checked : null;
+        let msg = isNew ? `${TYPES[type].label} aggiunt${type === 'scadenza' || type === 'nota' ? 'a' : 'o'}` : 'Modifiche salvate';
+
+        if (isNew) {
+          S.items.push(Object.assign(d, v)); resetFired(d);
+        } else {
+          const orig = getItem(it.id);
+          if (!orig) { closeSheet(); return; }
+          let scope = 'all';
+          if (series && orig.type !== 'compleanno' && snap() !== initial) {
+            scope = await askChoice('Modificare la serie?', `“${esc(orig.title)}” si ripete: ${repLabel(orig.repeat).toLowerCase()}`, [
+              ['one', 'Solo questa data', `Cambia solo ${fmtMed(occ)}: le altre restano come sono`, 'calendar'],
+              ['future', 'Questa e le successive', `Da ${fmtShort(occ)} in poi`, 'chevR'],
+              ['all', 'Tutta la serie', 'Tutte le ripetizioni, passate e future', 'repeat']
+            ]);
+            if (!scope) return;
+          }
+          const res = applyEdit(orig, occ, v, scope, doneOn);
+          if (scope === 'one') msg = 'Modificata solo questa data';
+          else if (scope === 'future') msg = 'Modificate questa data e le successive';
+          if (res && res.ponte) res.ponteTs = Date.now();
+        }
         save();
         closeSheet();
         refreshAll();
-        toast(isNew ? `${TYPES[type].label} aggiunt${type === 'scadenza' || type === 'nota' ? 'a' : 'o'}` : 'Modifiche salvate');
+        toast(msg);
       };
     }
+  });
+}
+/* Applica una modifica a un elemento, anche solo a una parte della serie */
+function shiftKeys(obj, delta, pred = () => true) {
+  const out = {};
+  for (const k of Object.keys(obj || {})) if (pred(k)) out[delta ? ds(addDays(pd(k), delta)) : k] = obj[k];
+  return out;
+}
+function detachCopy(orig) {
+  const c = clone(orig);
+  c.id = uid(); c.created = Date.now(); c.seriesOf = orig.seriesOf || orig.id;
+  delete c.extUid; delete c.ponte; delete c.ponteDa; delete c.ponteTs;
+  if (c.source === 'ponte') delete c.source;
+  return c;
+}
+function applyEdit(orig, occ, v, scope, doneOn) {
+  const base = occ || orig.date;
+  const delta = dayDiff(base, v.date);
+  if (scope === 'all' || (scope === 'future' && occ === orig.date)) {
+    const doneKeys = shiftKeys(orig.done, delta), skipKeys = shiftKeys(orig.skip, delta);
+    const newStart = ds(addDays(pd(orig.date), delta));
+    Object.assign(orig, v, { date: newStart, done: doneKeys });
+    if (orig.skip) orig.skip = skipKeys;
+    if (occ && doneOn !== null) { const k = ds(addDays(pd(occ), delta)); if (doneOn) orig.done[k] = true; else delete orig.done[k]; }
+    resetFired(orig);
+    return orig;
+  }
+  if (scope === 'one') {
+    const c = detachCopy(orig);
+    Object.assign(c, v, { repeat: 'none', until: '', done: {} });
+    delete c.skip;
+    if (doneOn === null ? isDone(orig, occ) : doneOn) c.done[v.date] = true;
+    orig.skip = orig.skip || {}; orig.skip[occ] = true;
+    if (orig.done) delete orig.done[occ];
+    S.items.push(c); resetFired(c); resetFired(orig);
+    return c;
+  }
+  // questa e le successive: la serie originale finisce il giorno prima, ne nasce una nuova
+  const c = detachCopy(orig);
+  Object.assign(c, v, {
+    done: shiftKeys(orig.done, delta, k => k >= occ),
+    skip: shiftKeys(orig.skip, delta, k => k > occ)
+  });
+  if (doneOn !== null) { if (doneOn) c.done[v.date] = true; else delete c.done[v.date]; }
+  orig.until = ds(addDays(pd(occ), -1));
+  orig.done = shiftKeys(orig.done, 0, k => k < occ);
+  if (orig.skip) orig.skip = shiftKeys(orig.skip, 0, k => k < occ);
+  S.items.push(c); resetFired(c); resetFired(orig);
+  return c;
+}
+/* Scelta tra più opzioni in un foglio: restituisce la chiave scelta o null */
+function askChoice(title, sub, options) {
+  return new Promise(resolve => {
+    let done = false;
+    const finish = val => { if (done) return; done = true; resolve(val); };
+    openSheet({
+      build: () => ({
+        title: `${title}<span class="sub">${sub}</span>`,
+        body: `<div class="choices">${options.map(([k, l, d, ic, danger]) => `<button class="choice ${danger ? 'danger' : ''}" data-act="choice" data-k="${k}"><span class="ibox">${I(ic || 'chevR')}</span><span class="grow"><b>${l}</b><small>${d}</small></span>${I('chevR', 'chev')}</button>`).join('')}</div>`,
+        foot: `<div class="btns"><span class="grow"></span><button class="btn" data-act="sheet-close">Annulla</button></div>`
+      }),
+      mount(w, sh) { sh.choose = k => { finish(k); closeSheet(); }; },
+      onClose: () => finish(null)
+    });
   });
 }
 function resetFired(it) {
@@ -1165,6 +1282,146 @@ function showBanner(it, a) {
   });
 }
 
+/* ---------------- Notifiche ad app chiusa (Web Push) ----------------
+   Il telefono riceve i promemoria anche con AgendApp chiusa: un piccolo server
+   (Supabase, UE) conosce solo titolo, orario e luogo dei promemoria dei prossimi
+   35 giorni e li consegna all'ora giusta. Si attiva nelle Impostazioni. */
+const PUSH_URL = 'https://orwotjyfhpqasxpowvkt.supabase.co/functions/v1/agendapp-push';
+const PUSH_DAYS = 35;
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const pushOn = () => !!(S.settings.push && S.settings.push.on);
+function randId() {
+  const a = new Uint8Array(18); crypto.getRandomValues(a);
+  return btoa(String.fromCharCode(...a)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+function b64ToU8(b64) {
+  const s = atob((b64 + '='.repeat((4 - b64.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/'));
+  return Uint8Array.from(s, c => c.charCodeAt(0));
+}
+function pushItems() {
+  const now = Date.now(), lim = now + PUSH_DAYS * 864e5, t = todayD(), out = [];
+  const payload = (it, occ, n) => ({ t: (it.type === 'compleanno' ? '🎂 ' : '') + it.title, b: alertBody(it, occ), id: it.id, occ, req: n.style === 'full', s: !!n.sound, v: !!n.vibrate });
+  for (const it of S.items) {
+    const n = it.notify;
+    if (!n || !n.enabled || n.style === 'quiet' || !n.reminders || !n.reminders.length) continue;
+    for (const occ of expand(it, t, addDays(t, PUSH_DAYS + 32))) {
+      if (isDone(it, occ)) continue;
+      const at0 = occTime(it, occ);
+      for (const off of n.reminders) {
+        const at = at0 - off * 60000, k = `${it.id}|${occ}|${off}`;
+        if (at <= now || at > lim || S.fired[k]) continue;
+        out.push({ k, at, p: payload(it, occ, n) });
+      }
+    }
+  }
+  for (const z of S.snoozes) {
+    const it = getItem(z.id);
+    if (it && z.at > now && it.notify) out.push({ k: `${z.key}|z${z.at}`, at: z.at, p: payload(it, z.occ, it.notify) });
+  }
+  return out.sort((a, b) => a.at - b.at).slice(0, 700);
+}
+async function pushSubscription(create) {
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub && create) {
+    const r = await fetch(PUSH_URL);
+    const { key } = await r.json();
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(key) });
+  }
+  return sub;
+}
+let pushBusy = false, pushAgain = false;
+async function pushSync(create = false) {
+  const P = S.settings.push;
+  if (!P || !P.on || !pushSupported()) return;
+  if (pushBusy) { pushAgain = true; return; }
+  pushBusy = true;
+  try {
+    const sub = await pushSubscription(create || Notification.permission === 'granted');
+    if (!sub) throw new Error('permesso per le notifiche non concesso');
+    const r = await fetch(PUSH_URL, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ a: 'sync', device: P.device, token: P.token, sub: sub.toJSON(), origin: location.origin, items: pushItems() })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || 'server non raggiungibile');
+    P.last = Date.now(); P.error = ''; P.n = j.n || 0;
+  } catch (e) {
+    P.error = navigator.onLine === false ? 'sei offline: riprovo più tardi' : ((e && e.message) || 'errore');
+  } finally {
+    pushBusy = false;
+    persist();
+    if (ui.tab === 'set' && !sheets.length) render();
+    if (pushAgain) { pushAgain = false; schedulePushSync(1500); }
+  }
+}
+let pushTimer;
+function schedulePushSync(delay = 3000) {
+  if (!pushOn()) return;
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => pushSync(false), delay);
+}
+async function pushEnable() {
+  if (!pushSupported()) {
+    toast(isIOS && !isStandalone() ? 'Su iPhone prima aggiungi AgendApp alla schermata Home e aprila da lì' : 'Questo browser non supporta le notifiche ad app chiusa');
+    render(); return;
+  }
+  const perm = await Notification.requestPermission();
+  if (perm !== 'granted') { toast('Permesso per le notifiche negato'); render(); return; }
+  S.settings.systemNotif = true;
+  const P = S.settings.push = Object.assign({ device: randId(), token: randId() }, S.settings.push || {});
+  P.on = true;
+  persist();
+  toast('Attivazione in corso…');
+  await pushSync(true);
+  render();
+  toast(P.error ? 'Non riuscito: ' + P.error : 'Fatto: ti avviso anche ad app chiusa');
+}
+async function pushDisable() {
+  const P = S.settings.push;
+  if (!P) return;
+  P.on = false; persist(); render();
+  try {
+    await fetch(PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: 'off', device: P.device, token: P.token }) });
+    const sub = await pushSubscription(false);
+    if (sub) await sub.unsubscribe();
+  } catch (e) { /* ignora */ }
+  toast('Notifiche ad app chiusa disattivate');
+}
+async function pushTest() {
+  const P = S.settings.push;
+  if (!pushOn()) return;
+  try {
+    const r = await fetch(PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: 'test', device: P.device, token: P.token }) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || 'errore');
+    toast('Notifica di prova inviata: arriva tra pochi secondi');
+  } catch (e) { toast('Prova non riuscita: ' + e.message); }
+}
+/* Gli avvisi già mostrati dal sistema ad app chiusa: segnati come inviati, finiscono nel centro notifiche */
+async function collectPushed() {
+  if (!('caches' in window)) return;
+  try {
+    const c = await caches.open('pushlog-agendapp');
+    const r = await c.match('./__push-log');
+    if (!r) return;
+    const keys = await r.json();
+    await c.delete('./__push-log');
+    let n = 0;
+    for (const k of keys || []) {
+      if (!k || String(k).startsWith('test-') || S.fired[k] || S.log.some(l => l.key === k)) continue;
+      const [id, occ] = String(k).split('|');
+      const it = getItem(id);
+      S.fired[k] = Date.now();
+      if (it) { S.log.unshift({ key: k, id, occ, at: Date.now(), read: false }); n++; }
+    }
+    S.log = S.log.slice(0, 150);
+    if (n) { persist(); updateBell(); }
+  } catch (e) { /* ignora */ }
+}
+
 /* ---------------- Import / export ---------------- */
 function download(name, text, mime) {
   const url = URL.createObjectURL(new Blob([text], { type: mime }));
@@ -1219,6 +1476,7 @@ function exportICS() {
     if (it.location) L.push(`LOCATION:${icsText(it.location)}`);
     const r = it.type === 'compleanno' ? { freq: 'yearly', n: 1 } : repInfo(it.repeat);
     if (r) L.push(`RRULE:FREQ=${r.freq.toUpperCase()};INTERVAL=${r.n}${it.until ? ';UNTIL=' + it.until.replace(/-/g, '') + 'T235959' : ''}`);
+    if (r && it.skip) for (const k of Object.keys(it.skip)) L.push(isAllDay(it) ? `EXDATE;VALUE=DATE:${k.replace(/-/g, '')}` : `EXDATE:${k.replace(/-/g, '')}T${it.time.replace(':', '')}00`);
     if (it.notify && it.notify.enabled) for (const off of it.notify.reminders) {
       const mins = isAllDay(it) ? (ah * 60 + am) - off : -off;
       L.push('BEGIN:VALARM', 'ACTION:DISPLAY', `DESCRIPTION:${icsText(it.title)}`, `TRIGGER:${mins < 0 ? '-' : ''}PT${Math.abs(mins)}M`, 'END:VALARM');
@@ -1623,6 +1881,12 @@ const ACT = {
   'day-shift': el => { const s = sheets[sheets.length - 1]; s && s.shift && s.shift(+el.dataset.n); },
   gomonth: el => { ui.cursor = new Date(ui.cursor.getFullYear(), +el.dataset.m, 1); ui.view = 'month'; render(); window.scrollTo(0, 0); },
   goweek: () => { ui.tab = 'cal'; ui.view = 'week'; ui.cursor = todayD(); render(); },
+  'area-toggle': el => {
+    const k = el.dataset.cat, h = new Set(S.settings.hiddenCats || []);
+    if (h.has(k)) h.delete(k); else h.add(k);
+    S.settings.hiddenCats = [...h]; save(); render();
+  },
+  'area-all': () => { S.settings.hiddenCats = []; save(); render(); },
   'jump-overdue': () => { const el = $('#overdue'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); else toast('Niente in ritardo, ottimo!'); },
   new: () => {
     let date = ds(todayD());
@@ -1650,16 +1914,35 @@ const ACT = {
     toast(it.done[o] ? (it.type === 'pagamento' ? 'Pagato ✓' : 'Fatto ✓') : 'Segnato come da fare');
   },
   'item-save': () => { const s = sheets[sheets.length - 1]; s && s.save && s.save(); },
-  'item-delete': el => {
-    const it = getItem(el.dataset.id);
+  'item-delete': async el => {
+    const it = getItem(el.dataset.id), occ = el.dataset.occ;
     if (!it) return;
-    const rep = it.repeat && it.repeat !== 'none';
-    if (!confirm(`Eliminare “${it.title}”${rep ? ' e tutte le sue ripetizioni' : ''}?`)) return;
-    if (it.ponte && window.Ponte) Ponte.ignora(it.ponte);
-    S.items = S.items.filter(x => x.id !== it.id);
-    S.snoozes = S.snoozes.filter(s => s.id !== it.id);
-    save(); closeSheet(); refreshAll(); toast('Eliminato');
+    let scope = 'all';
+    if (occ && isRecurring(it) && it.type !== 'compleanno') {
+      scope = await askChoice('Eliminare?', `“${esc(it.title)}” si ripete: ${repLabel(it.repeat).toLowerCase()}`, [
+        ['one', 'Solo questa data', `Elimina solo ${fmtMed(occ)}`, 'calendar'],
+        ['future', 'Questa e le successive', `Da ${fmtShort(occ)} in poi`, 'chevR'],
+        ['all', 'Tutta la serie', 'Tutte le ripetizioni', 'trash', true]
+      ]);
+      if (!scope) return;
+    } else if (!confirm(`Eliminare “${it.title}”${isRecurring(it) ? ' e tutte le sue ripetizioni' : ''}?`)) return;
+    if (scope === 'one') {
+      it.skip = it.skip || {}; it.skip[occ] = true;
+      if (it.done) delete it.done[occ];
+      S.snoozes = S.snoozes.filter(s => !(s.id === it.id && s.occ === occ));
+      if (!expand(it, pd(it.date), addDays(pd(it.date), 3700)).length) S.items = S.items.filter(x => x.id !== it.id);
+    } else if (scope === 'future' && occ !== it.date) {
+      it.until = ds(addDays(pd(occ), -1));
+      S.snoozes = S.snoozes.filter(s => !(s.id === it.id && s.occ >= occ));
+    } else {
+      if (it.ponte && window.Ponte) Ponte.ignora(it.ponte);
+      S.items = S.items.filter(x => x.id !== it.id);
+      S.snoozes = S.snoozes.filter(s => s.id !== it.id);
+    }
+    save(); closeSheet(); refreshAll();
+    toast(scope === 'one' ? 'Eliminata questa data' : scope === 'future' ? 'Eliminate questa data e le successive' : 'Eliminato');
   },
+  choice: el => { const s = sheets[sheets.length - 1]; s && s.choose && s.choose(el.dataset.k); },
   'item-dup': el => {
     const it = getItem(el.dataset.id);
     if (!it) return;
@@ -1724,6 +2007,7 @@ const ACT = {
     save(); closeSheet(); refreshAll(); toast('Google Calendar scollegato');
   },
   ponte: () => { if (window.Ponte) Ponte.apri(); },
+  'push-test': () => pushTest(),
   'check-update': () => {
     if (!window.AppUpdate) { toast('Controllo aggiornamenti non disponibile'); return; }
     window.AppUpdate.check().then(found => { if (!found) toast(`Hai già l'ultima versione (${APP_VERSION})`); });
@@ -1757,6 +2041,7 @@ document.addEventListener('change', e => {
   const el = e.target;
   if (el.dataset.set) {
     const k = el.dataset.set;
+    if (k === 'push') { if (el.checked) pushEnable(); else pushDisable(); return; }
     if (k === 'systemNotif') {
       if (el.checked && 'Notification' in window && Notification.permission !== 'granted') {
         Notification.requestPermission().then(p => {
@@ -1879,21 +2164,26 @@ function avviaPonte() {
 applyTheme();
 render();
 avviaPonte();
-setTimeout(checkReminders, 800);
+collectPushed().finally(() => setTimeout(checkReminders, 300));
 setInterval(checkReminders, 15000);
-document.addEventListener('visibilitychange', () => { if (!document.hidden) { checkReminders(); renderChrome(); autoSync(); } });
+setTimeout(() => pushSync(false), 2500);
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) { collectPushed().finally(checkReminders); renderChrome(); autoSync(); }
+  else if (pushOn()) { clearTimeout(pushTimer); pushSync(false); }
+});
 setTimeout(autoSync, 1500);
 // a mezzanotte aggiorna la vista "oggi"
 let lastDay = ds(todayD());
 setInterval(() => { const d = ds(todayD()); if (d !== lastDay) { lastDay = d; render(); } }, 60000);
 
 const params = new URLSearchParams(location.search);
-if (params.get('open')) { const it = getItem(params.get('open')); if (it) setTimeout(() => openForm(it, {}, nextOcc(it)), 300); history.replaceState(null, '', location.pathname); }
+if (params.get('open')) { const it = getItem(params.get('open')); if (it) setTimeout(() => openForm(it, {}, params.get('occ') || nextOcc(it)), 300); history.replaceState(null, '', location.pathname); }
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').catch(() => {});
   navigator.serviceWorker.addEventListener('message', e => {
-    if (e.data && e.data.type === 'open-item') { const it = getItem(e.data.id); if (it) openForm(it, {}, nextOcc(it)); }
+    if (e.data && e.data.type === 'open-item') { const it = getItem(e.data.id); if (it) openForm(it, {}, e.data.occ || nextOcc(it)); }
+    if (e.data && e.data.type === 'push') checkReminders();
   });
 }
 })();

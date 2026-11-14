@@ -10,7 +10,7 @@ Funziona nel browser e si installa sul telefono come una vera app (PWA), anche o
 - **Calendario** con vista **settimanale, mensile e annuale**. Tocca un giorno per aprirlo: vedi tutti gli impegni, ne aggiungi di nuovi e scrivi gli **appunti del giorno**. Scorri a destra o a sinistra per cambiare periodo.
 - **Festività italiane** segnate in rosso (comprese Pasqua e Pasquetta).
 - **Tipologie**: Appuntamenti, Scadenze, Pagamenti (con importo e totali del mese/anno), Compleanni (con l'età), Note.
-- **Aree della vita**: Personale, Lavoro, Salute, Mezzi, Casa, Famiglia e amici, Svago, Sport, Studio, Animali, Finanze, Altro.
+- **Aree della vita** con legenda dei colori nel calendario (tocca un'area per nasconderla o mostrarla): Personale, Lavoro, Salute, Mezzi, Casa, Famiglia e amici, Svago, Sport, Studio, Animali, Finanze, Altro.
 - **Mezzi**: registra auto, moto, camper, furgone, barca e bicicletta, con targa. Per ogni mezzo hai i modelli rapidi (assicurazione, bollo, revisione, tagliando, gomme, rimessaggio…).
 - **Ripetizioni**: ogni giorno, settimana, 2 settimane, mese, 2/3/6 mesi, anno, 2 anni, con data di fine.
 - **Notifiche personalizzabili per ogni elemento**:
@@ -38,10 +38,18 @@ Per installarla sul telefono: aprila con Chrome (Android) o Safari (iPhone) → 
 
 ## Note sulle notifiche
 
-I dati e i promemoria restano sul dispositivo. Gli avvisi arrivano quando AgendApp è aperta o in secondo piano;
-con le *Notifiche di sistema* attive (Impostazioni) compaiono anche come notifiche del telefono mentre l'app è in background.
-Con l'app completamente chiusa il browser non può svegliarla da solo: per quel caso è previsto un aggiornamento futuro
-(server push o sincronizzazione con Google Calendar tramite l'esportazione .ics).
+Gli avvisi arrivano quando AgendApp è aperta o in secondo piano. Con **Notifiche ad app chiusa** (Impostazioni → Notifiche)
+arrivano anche con l'app chiusa o il telefono in standby, tramite Web Push:
+
+- l'app manda a un piccolo server (progetto Supabase `agendapp-push`, in Europa) titolo, orario e luogo dei promemoria dei prossimi 35 giorni, e li riaggiorna a ogni modifica;
+- ogni minuto il server invia quelli in scadenza (`supabase/functions/agendapp-push`, pianificato con `pg_cron`);
+- su iPhone funziona solo con AgendApp aggiunta alla schermata Home (iOS 16.4 o successivo).
+
+Il resto dei dati resta sul dispositivo.
+
+## Ripetizioni
+
+Toccando una data di un impegno che si ripete puoi modificarla o eliminarla scegliendo **solo questa data**, **questa e le successive** o **tutta la serie**.
 
 ## Pubblicare un aggiornamento
 
