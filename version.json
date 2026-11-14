@@ -1,10 +1,8 @@
 {
-  "version": "2.0.0",
+  "version": "2.0.1",
   "date": "14/11/2026",
   "notes": [
-    "Nuova grafica: più chiara, moderna e leggibile",
-    "Ripetizioni: ora puoi modificare o eliminare solo una data, oppure quella e le successive, senza toccare il resto della serie",
-    "Legenda delle aree della vita nel calendario: tocca un'area per nasconderla o mostrarla",
-    "Notifiche anche ad app chiusa: attivale in Impostazioni → Notifiche"
+    "Notifiche ad app chiusa: nuovo tasto Verifica in Impostazioni → Notifiche",
+    "Controlla passo per passo permessi, motore notifiche e collegamento, con prove e tasto Ripara"
   ]
 }

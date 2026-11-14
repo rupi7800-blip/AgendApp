@@ -63,8 +63,11 @@ self.addEventListener('fetch', e => {
 });
 
 // Tasto "Aggiorna": attiva subito un eventuale service worker nuovo
+const SW_VERSION = '2.0.1';
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // diagnostica: l'app chiede quale service worker è attivo e se gestisce le push
+  if (e.data && e.data.type === 'ping' && e.source) e.source.postMessage({ type: 'pong', v: SW_VERSION, push: true });
 });
 
 /* ---------- Notifiche push: arrivano anche ad app chiusa ---------- */

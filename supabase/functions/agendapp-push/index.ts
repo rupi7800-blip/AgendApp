@@ -65,6 +65,14 @@ Deno.serve(async req => {
       return json({ sent, gone });
     }
 
+    if (a === 'enc') { // diagnostica: restituisce il messaggio cifrato senza inviarlo
+      if (req.headers.get('x-cron') !== await cfg('cron')) return json({ error: 'no' }, 403);
+      const k = await keys();
+      const r = webpush.generateRequestDetails(body.sub, JSON.stringify({ t: 'prova' }), { TTL: 60, vapidDetails: { subject: 'https://rupi7800-blip.github.io', publicKey: k.pub, privateKey: k.priv } });
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(r.body)));
+      return json({ headers: r.headers, body: b64, pub: k.pub });
+    }
+
     const { device, token } = body;
     if (!okId(device) || !okId(token)) return json({ error: 'dispositivo non valido' }, 400);
     const st = await auth(device, token);
