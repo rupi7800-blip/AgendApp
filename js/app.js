@@ -184,7 +184,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '2.0.1';
+const APP_VERSION = '2.1.0';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -1247,6 +1247,7 @@ function closeAlert(action, m) {
       toast(`Ti avviso di nuovo ${m >= 1440 ? 'domani' : m >= 60 ? 'tra 1 ora' : 'tra ' + m + ' minuti'}`);
     }
     const l = S.log.find(x => x.key === a.key); if (l) l.read = true;
+    pushAck(action === 'done' ? [`${a.id}|${a.occ}|`] : [baseKey(a.key)]);
     save();
   } else if (action === 'snooze') toast('Questa era una prova: nessun posticipo');
   $('#alert-root').innerHTML = '';
@@ -1288,6 +1289,8 @@ function showBanner(it, a) {
    35 giorni e li consegna all'ora giusta. Si attiva nelle Impostazioni. */
 const PUSH_URL = 'https://orwotjyfhpqasxpowvkt.supabase.co/functions/v1/agendapp-push';
 const PUSH_DAYS = 35;
+const PUSH_REPEATS = [2, 5, 10];
+const baseKey = k => String(k || '').split('|z')[0].split('|r')[0];
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
@@ -1302,7 +1305,12 @@ function b64ToU8(b64) {
 }
 function pushItems() {
   const now = Date.now(), lim = now + PUSH_DAYS * 864e5, t = todayD(), out = [];
-  const payload = (it, occ, n) => ({ t: (it.type === 'compleanno' ? '🎂 ' : '') + it.title, b: alertBody(it, occ), id: it.id, occ, req: n.style === 'full', s: !!n.sound, v: !!n.vibrate });
+  const payload = (it, occ, n, r = 0) => ({ t: (it.type === 'compleanno' ? '🎂 ' : '') + it.title, b: alertBody(it, occ), id: it.id, occ, req: n.style === 'full', s: !!n.sound, v: !!n.vibrate, c: CHECKABLE.has(it.type) ? (it.type === 'pagamento' ? 'Pagato' : 'Fatto') : '', r });
+  // gli avvisi a schermo intero, se ignorati, suonano di nuovo dopo 2, 5 e 10 minuti
+  const withRepeats = (k, at, it, occ, n) => {
+    out.push({ k, at, p: payload(it, occ, n) });
+    if (n.style === 'full') PUSH_REPEATS.forEach((m, i) => out.push({ k: `${k}|r${i + 1}`, at: at + m * 60000, p: payload(it, occ, n, i + 1) }));
+  };
   for (const it of S.items) {
     const n = it.notify;
     if (!n || !n.enabled || n.style === 'quiet' || !n.reminders || !n.reminders.length) continue;
@@ -1312,13 +1320,13 @@ function pushItems() {
       for (const off of n.reminders) {
         const at = at0 - off * 60000, k = `${it.id}|${occ}|${off}`;
         if (at <= now || at > lim || S.fired[k]) continue;
-        out.push({ k, at, p: payload(it, occ, n) });
+        withRepeats(k, at, it, occ, n);
       }
     }
   }
   for (const z of S.snoozes) {
     const it = getItem(z.id);
-    if (it && z.at > now && it.notify) out.push({ k: `${z.key}|z${z.at}`, at: z.at, p: payload(it, z.occ, it.notify) });
+    if (it && z.at > now && it.notify) withRepeats(`${z.key}|z${z.at}`, z.at, it, z.occ, it.notify);
   }
   return out.sort((a, b) => a.at - b.at).slice(0, 700);
 }
@@ -1348,6 +1356,7 @@ async function pushSync(create = false) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.error) throw new Error(j.error || 'server non raggiungibile');
     P.last = Date.now(); P.error = ''; P.n = j.n || 0;
+    try { await (await caches.open('pushlog-agendapp')).put('./__push-cred', new Response(JSON.stringify({ device: P.device, token: P.token }), { headers: { 'Content-Type': 'application/json' } })); } catch (e) { /* ignora */ }
   } catch (e) {
     P.error = navigator.onLine === false ? 'sei offline: riprovo più tardi' : ((e && e.message) || 'errore');
   } finally {
@@ -1382,6 +1391,7 @@ async function pushEnable() {
 async function pushDisable() {
   const P = S.settings.push;
   if (!P) return;
+  try { await (await caches.open('pushlog-agendapp')).delete('./__push-cred'); } catch (e) { /* ignora */ }
   P.on = false; persist(); render();
   try {
     await fetch(PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: 'off', device: P.device, token: P.token }) });
@@ -1389,6 +1399,11 @@ async function pushDisable() {
     if (sub) await sub.unsubscribe();
   } catch (e) { /* ignora */ }
   toast('Notifiche ad app chiusa disattivate');
+}
+function pushAck(keys) {
+  const P = S.settings.push;
+  if (!pushOn() || !keys.length) return;
+  fetch(PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ a: 'ack', device: P.device, token: P.token, keys }) }).catch(() => {});
 }
 async function pushTest() {
   const P = S.settings.push;
@@ -1435,6 +1450,9 @@ function openPushCheck() {
           <div class="set-row"><div class="lbl">1 · Notifica dal telefono<small>Verifica che il telefono mostri gli avvisi di AgendApp</small></div><button class="btn sm" data-act="push-local">Prova</button></div>
           <div class="set-row"><div class="lbl">2 · Notifica dal server<small>Premi, poi chiudi l'app: deve arrivare entro pochi secondi</small></div><button class="btn sm" data-act="push-test">Prova</button></div>
         </div>
+        <div class="card"><h3>Per avvisi ben visibili (Android)</h3>
+          <p class="hint" style="margin:10px 0 12px;font-size:13.5px"><b>Impostazioni → App → AgendApp</b> (o Chrome) <b>→ Notifiche</b>, poi apri la categoria delle notifiche e attiva <b>Mostra come pop-up</b> (o “Sullo schermo”), <b>Schermata di blocco</b> e, se vuoi, <b>Ignora Non disturbare</b>. Gli avvisi “schermo intero” restano finché non rispondi e suonano di nuovo dopo 2, 5 e 10 minuti; toccandoli si apre l'avviso a tutto schermo.</p>
+        </div>
         <div class="card"><h3>Se la prova 1 non compare</h3>
           <p class="hint" style="margin:10px 0 12px;font-size:13.5px">Le notifiche sono bloccate dal telefono. Su Android: <b>Impostazioni → App → Chrome</b> (o AgendApp) <b>→ Notifiche</b> e attivale, anche per il sito <b>rupi7800-blip.github.io</b>. Controlla anche che <b>Non disturbare</b> sia spento e che il risparmio energetico non limiti Chrome.</p>
         </div>`,
@@ -1468,20 +1486,34 @@ async function collectPushed() {
   if (!('caches' in window)) return;
   try {
     const c = await caches.open('pushlog-agendapp');
-    const r = await c.match('./__push-log');
-    if (!r) return;
-    const keys = await r.json();
-    await c.delete('./__push-log');
     let n = 0;
-    for (const k of keys || []) {
-      if (!k || String(k).startsWith('test-') || S.fired[k] || S.log.some(l => l.key === k)) continue;
-      const [id, occ] = String(k).split('|');
-      const it = getItem(id);
-      S.fired[k] = Date.now();
-      if (it) { S.log.unshift({ key: k, id, occ, at: Date.now(), read: false }); n++; }
+    const acted = new Set();
+    const ra = await c.match('./__push-actions');
+    if (ra) {
+      const acts = await ra.json();
+      await c.delete('./__push-actions');
+      for (const x of acts || []) {
+        const it = getItem(x.id);
+        if (!it) continue;
+        if (x.a === 'done' && x.occ) { it.done[x.occ] = true; if (it.ponte) it.ponteTs = x.at || Date.now(); n++; }
+        if (x.a === 'snooze' && x.at > Date.now() && !S.snoozes.some(z => z.key === x.k && z.at === x.at)) { S.snoozes.push({ key: x.k, id: x.id, occ: x.occ, at: x.at }); n++; }
+        acted.add(baseKey(x.k)); acted.add(`${x.id}|${x.occ}|`);
+      }
     }
+    const r = await c.match('./__push-log');
+    const keys = r ? await r.json() : [];
+    if (r) await c.delete('./__push-log');
+    for (const k of keys || []) {
+      if (!k || String(k).startsWith('test-')) continue;
+      const b = baseKey(k);
+      if (!String(k).includes('|r')) S.fired[k] = S.fired[k] || Date.now();
+      if (S.log.some(l => baseKey(l.key) === b)) continue;
+      const [id, occ] = String(k).split('|');
+      if (getItem(id)) { S.log.unshift({ key: b, id, occ, at: Date.now(), read: false }); n++; }
+    }
+    S.log.forEach(l => { if (acted.has(baseKey(l.key)) || (acted.has(`${l.id}|${l.occ}|`) && l.id)) l.read = true; });
     S.log = S.log.slice(0, 150);
-    if (n) { persist(); updateBell(); }
+    if (n) { save(); refreshAll(); }
   } catch (e) { /* ignora */ }
 }
 
@@ -2249,6 +2281,21 @@ let lastDay = ds(todayD());
 setInterval(() => { const d = ds(todayD()); if (d !== lastDay) { lastDay = d; render(); } }, 60000);
 
 const params = new URLSearchParams(location.search);
+function openPushedAlert(id, occ, k) {
+  const it = getItem(id);
+  if (!it || !occ) { if (it) openForm(it, {}, nextOcc(it)); return; }
+  const key = k ? baseKey(k) : `${id}|${occ}|open`;
+  if (alertShowing && alertShowing.id === id && alertShowing.occ === occ) return;
+  if (alertQueue.some(a => a.id === id && a.occ === occ)) return;
+  if (!S.fired[key]) S.fired[key] = Date.now();
+  alertQueue.unshift({ key, id, occ, off: null });
+  pump();
+}
+if (params.get('alert')) {
+  const id = params.get('alert'), occ = params.get('occ'), k = params.get('k');
+  history.replaceState(null, '', location.pathname);
+  collectPushed().finally(() => setTimeout(() => openPushedAlert(id, occ, k), 200));
+}
 if (params.get('open')) { const it = getItem(params.get('open')); if (it) setTimeout(() => openForm(it, {}, params.get('occ') || nextOcc(it)), 300); history.replaceState(null, '', location.pathname); }
 
 if ('serviceWorker' in navigator) {
@@ -2256,6 +2303,7 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data && e.data.type === 'open-item') { const it = getItem(e.data.id); if (it) openForm(it, {}, e.data.occ || nextOcc(it)); }
     if (e.data && e.data.type === 'push') checkReminders();
+    if (e.data && e.data.type === 'open-alert') openPushedAlert(e.data.id, e.data.occ, e.data.k);
   });
 }
 })();

@@ -1,8 +1,10 @@
 {
-  "version": "2.0.1",
+  "version": "2.1.0",
   "date": "14/11/2026",
   "notes": [
-    "Notifiche ad app chiusa: nuovo tasto Verifica in Impostazioni → Notifiche",
-    "Controlla passo per passo permessi, motore notifiche e collegamento, con prove e tasto Ripara"
+    "Avvisi a schermo intero ad app chiusa: la notifica resta finché non rispondi e suona di nuovo dopo 2, 5 e 10 minuti",
+    "Tasti direttamente nella notifica: Fatto / Pagato e Tra 10 min",
+    "Toccando la notifica si apre subito l'avviso a tutto schermo con il suono",
+    "In Impostazioni → Notifiche → Verifica trovi come renderli ben visibili su Android"
   ]
 }

@@ -4,6 +4,8 @@
 //   POST {a:'sync', device, token, sub, origin, items:[{k, at, p}]}  -> registra il dispositivo e i promemoria
 //   POST {a:'off',  device, token}      -> scollega il dispositivo
 //   POST {a:'test', device, token}      -> invia subito una notifica di prova
+//   POST {a:'ack', device, token, keys} -> avviso visto: annulla ripetizioni/avvisi che iniziano con quelle chiavi
+//   POST {a:'snooze', device, token, k, at, p} -> posticipa dalla notifica (tasto Tra 10 min)
 //   POST {a:'send'} + header x-cron     -> chiamata ogni minuto da pg_cron: invia i promemoria scaduti
 import webpush from 'npm:web-push@3.6.7';
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4';
@@ -65,14 +67,6 @@ Deno.serve(async req => {
       return json({ sent, gone });
     }
 
-    if (a === 'enc') { // diagnostica: restituisce il messaggio cifrato senza inviarlo
-      if (req.headers.get('x-cron') !== await cfg('cron')) return json({ error: 'no' }, 403);
-      const k = await keys();
-      const r = webpush.generateRequestDetails(body.sub, JSON.stringify({ t: 'prova' }), { TTL: 60, vapidDetails: { subject: 'https://rupi7800-blip.github.io', publicKey: k.pub, privateKey: k.priv } });
-      const b64 = btoa(String.fromCharCode(...new Uint8Array(r.body)));
-      return json({ headers: r.headers, body: b64, pub: k.pub });
-    }
-
     const { device, token } = body;
     if (!okId(device) || !okId(token)) return json({ error: 'dispositivo non valido' }, 400);
     const st = await auth(device, token);
@@ -88,6 +82,24 @@ Deno.serve(async req => {
       await push(data!.sub, { t: 'AgendApp', b: 'Le notifiche ad app chiusa funzionano ✓', k: 'test-' + Date.now() }, data!.sub?.origin);
       return json({ ok: true });
     }
+    if (a === 'ack') {
+      // avviso visto (toccato, scorso via, fatto): annulla le ripetizioni e gli altri avvisi indicati
+      if (st !== 'ok') return json({ ok: true });
+      const pre = (Array.isArray(body.keys) ? body.keys : []).filter((k: unknown) => typeof k === 'string' && /^[A-Za-z0-9|:_-]{3,200}$/.test(k as string)).slice(0, 20);
+      for (const p of pre) {
+        await db.from('push_queue').update({ sent_at: new Date().toISOString() }).eq('device_id', device).is('sent_at', null).like('key', p.replace(/_/g, '\\_') + '%');
+      }
+      return json({ ok: true });
+    }
+    if (a === 'snooze') {
+      if (st !== 'ok') return json({ error: 'dispositivo non registrato' }, 404);
+      const at = Number(body.at), base = String(body.k || '').split('|z')[0].split('|r')[0];
+      if (!Number.isFinite(at) || at < Date.now() - 60000 || at > Date.now() + 3 * 864e5 || !/^[A-Za-z0-9|:_-]{3,150}$/.test(base)) return json({ error: 'dati non validi' }, 400);
+      const p = body.p || {};
+      const key = `${base}|z${Math.round(at)}`;
+      await db.from('push_queue').upsert({ device_id: device, key, at: new Date(at).toISOString(), payload: { t: String(p.t || '').slice(0, 200), b: String(p.b || '').slice(0, 400), k: key, id: String(p.id || '').slice(0, 80), occ: String(p.occ || '').slice(0, 10), req: !!p.req, s: !!p.s, v: !!p.v, c: String(p.c || '').slice(0, 20) } }, { onConflict: 'device_id,key' });
+      return json({ ok: true, key });
+    }
     if (a === 'sync') {
       const sub = body.sub;
       if (!sub || typeof sub.endpoint !== 'string' || !/^https:\/\//.test(sub.endpoint) || !sub.keys) return json({ error: 'iscrizione non valida' }, 400);
@@ -97,7 +109,7 @@ Deno.serve(async req => {
       const rows = items.filter((x: any) => x && typeof x.k === 'string' && x.k.length < 200 && Number.isFinite(x.at) && x.at > now - 60000 && x.at < now + 40 * 864e5)
         .map((x: any) => ({
           device_id: device, key: x.k, at: new Date(x.at).toISOString(),
-          payload: { t: String(x.p?.t || '').slice(0, 200), b: String(x.p?.b || '').slice(0, 400), k: x.k, id: String(x.p?.id || '').slice(0, 80), occ: String(x.p?.occ || '').slice(0, 10), req: !!x.p?.req, s: !!x.p?.s, v: !!x.p?.v }
+          payload: { t: String(x.p?.t || '').slice(0, 200), b: String(x.p?.b || '').slice(0, 400), k: x.k, id: String(x.p?.id || '').slice(0, 80), occ: String(x.p?.occ || '').slice(0, 10), req: !!x.p?.req, s: !!x.p?.s, v: !!x.p?.v, c: String(x.p?.c || '').slice(0, 20), r: Number(x.p?.r) || 0 }
         }));
       await db.from('push_devices').upsert({ id: device, token: await sha(token), sub, updated_at: new Date().toISOString() });
       // sostituisce i promemoria non ancora inviati; quelli già inviati non si ripetono
