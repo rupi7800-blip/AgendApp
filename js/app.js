@@ -184,7 +184,7 @@ function holidays(y) {
 const holidayOf = s => holidays(+s.slice(0, 4))[s] || '';
 
 /* ---------------- Stato e salvataggio ---------------- */
-const APP_VERSION = '2.0.0';
+const APP_VERSION = '2.0.1';
 const KEY = 'agendapp.v1';
 function relTime(ts) {
   const m = Math.round((Date.now() - ts) / 60000);
@@ -650,7 +650,7 @@ function pushRow() {
   else if (P.error) st = `<span class="danger">Problema: ${esc(P.error)}</span>`;
   else st = `Attive · ${P.n || 0} promemoria in programma${P.last ? ' · aggiornate ' + relTime(P.last) : ''}`;
   return `<div class="set-row highlight"><div class="lbl"><span class="lbl-ic">${I('bell')}</span>Notifiche ad app chiusa<small>${st}</small></div>
-      ${on ? `<button class="btn sm" data-act="push-test">Prova</button>` : ''}<label class="switch"><input type="checkbox" data-set="push" ${on ? 'checked' : ''} ${pushSupported() ? '' : 'disabled'}><span></span></label></div>
+      ${on ? `<button class="btn sm" data-act="push-check">Verifica</button>` : ''}<label class="switch"><input type="checkbox" data-set="push" ${on ? 'checked' : ''} ${pushSupported() ? '' : 'disabled'}><span></span></label></div>
     ${on ? '' : `<p class="hint" style="margin:-4px 0 10px">Per consegnarti gli avvisi all'ora giusta, titolo, orario e luogo dei promemoria dei prossimi ${PUSH_DAYS} giorni vengono affidati a un piccolo server di AgendApp (in Europa). Il resto dei dati resta sul telefono.</p>`}`;
 }
 function settingsView() {
@@ -1400,6 +1400,69 @@ async function pushTest() {
     toast('Notifica di prova inviata: arriva tra pochi secondi');
   } catch (e) { toast('Prova non riuscita: ' + e.message); }
 }
+/* Diagnostica: controlla passo per passo cosa serve perché le notifiche arrivino */
+function swPing() {
+  return new Promise(resolve => {
+    const ctl = navigator.serviceWorker && navigator.serviceWorker.controller;
+    if (!ctl) { resolve(null); return; }
+    const t = setTimeout(() => { navigator.serviceWorker.removeEventListener('message', on); resolve(false); }, 1500);
+    function on(e) { if (e.data && e.data.type === 'pong') { clearTimeout(t); navigator.serviceWorker.removeEventListener('message', on); resolve(e.data); } }
+    navigator.serviceWorker.addEventListener('message', on);
+    ctl.postMessage({ type: 'ping' });
+  });
+}
+async function pushChecks() {
+  const out = [];
+  const add = (ok, title, text) => out.push({ ok, title, text });
+  const perm = 'Notification' in window ? Notification.permission : 'unsupported';
+  add(perm === 'granted', 'Permesso del browser', perm === 'granted' ? 'Concesso' : perm === 'denied' ? 'Bloccato: riattivalo dalle impostazioni del sito nel browser' : 'Non concesso');
+  const pong = await swPing();
+  add(!!(pong && pong.push), 'Motore notifiche dell\'app', pong && pong.push ? `Attivo (versione ${esc(pong.v)})` : pong === null ? 'Non attivo: chiudi e riapri l\'app, poi premi Ripara' : 'Versione vecchia senza notifiche ad app chiusa: premi Ripara');
+  let sub = null;
+  try { sub = await (await navigator.serviceWorker.ready).pushManager.getSubscription(); } catch (e) { /* no */ }
+  add(!!sub, 'Iscrizione alle notifiche', sub ? 'Presente' : 'Mancante: premi Ripara');
+  const P = S.settings.push || {};
+  add(!!P.last && !P.error, 'Collegamento con il server', P.error ? 'Problema: ' + esc(P.error) : P.last ? `${P.n || 0} promemoria in programma · aggiornato ${relTime(P.last)}` : 'Mai aggiornato');
+  return out;
+}
+function openPushCheck() {
+  let rows = '<p class="hint">Controllo in corso…</p>';
+  const sh = openSheet({
+    build: () => ({
+      title: 'Verifica notifiche<span class="sub">Cosa serve perché gli avvisi arrivino ad app chiusa</span>',
+      body: `<div class="checks">${rows}</div>
+        <div class="card" style="margin-top:14px"><h3>Prove</h3>
+          <div class="set-row"><div class="lbl">1 · Notifica dal telefono<small>Verifica che il telefono mostri gli avvisi di AgendApp</small></div><button class="btn sm" data-act="push-local">Prova</button></div>
+          <div class="set-row"><div class="lbl">2 · Notifica dal server<small>Premi, poi chiudi l'app: deve arrivare entro pochi secondi</small></div><button class="btn sm" data-act="push-test">Prova</button></div>
+        </div>
+        <div class="card"><h3>Se la prova 1 non compare</h3>
+          <p class="hint" style="margin:10px 0 12px;font-size:13.5px">Le notifiche sono bloccate dal telefono. Su Android: <b>Impostazioni → App → Chrome</b> (o AgendApp) <b>→ Notifiche</b> e attivale, anche per il sito <b>rupi7800-blip.github.io</b>. Controlla anche che <b>Non disturbare</b> sia spento e che il risparmio energetico non limiti Chrome.</p>
+        </div>`,
+      foot: `<div class="btns"><button class="btn" data-act="push-repair">${I('repeat')}Ripara</button><span class="grow"></span><button class="btn primary" data-act="sheet-close">Fatto</button></div>`
+    }),
+    refresh(w, s) { s.draw(); }
+  });
+  pushChecks().then(list => {
+    rows = list.map(c => `<div class="check-row ${c.ok ? 'ok' : 'ko'}"><span class="ck">${I(c.ok ? 'check' : 'alert')}</span><div><b>${c.title}</b><small>${c.text}</small></div></div>`).join('');
+    sh.draw();
+  });
+}
+async function pushRepair() {
+  toast('Riparazione in corso…');
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js');
+    await reg.update().catch(() => {});
+    if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    const old = await reg.pushManager.getSubscription();
+    if (old) await old.unsubscribe();
+    if (S.settings.push) S.settings.push.on = true;
+    await pushSync(true);
+    const P = S.settings.push || {};
+    toast(P.error ? 'Non riuscito: ' + P.error : 'Riparato: ora premi la prova 2');
+  } catch (e) { toast('Riparazione non riuscita: ' + e.message); }
+  const top = sheets[sheets.length - 1];
+  if (top && top.refresh) { closeSheet(); setTimeout(openPushCheck, 250); }
+}
 /* Gli avvisi già mostrati dal sistema ad app chiusa: segnati come inviati, finiscono nel centro notifiche */
 async function collectPushed() {
   if (!('caches' in window)) return;
@@ -2008,6 +2071,15 @@ const ACT = {
   },
   ponte: () => { if (window.Ponte) Ponte.apri(); },
   'push-test': () => pushTest(),
+  'push-check': () => openPushCheck(),
+  'push-local': async () => {
+    try {
+      const r = await navigator.serviceWorker.ready;
+      await r.showNotification('AgendApp', { body: 'Notifica locale di prova: il telefono mostra gli avvisi ✓', tag: 'local-test', icon: 'icons/icon-192.png' });
+      toast('Notifica locale mostrata: guarda la barra in alto');
+    } catch (e) { toast('Il telefono ha rifiutato la notifica: ' + e.message); }
+  },
+  'push-repair': () => pushRepair(),
   'check-update': () => {
     if (!window.AppUpdate) { toast('Controllo aggiornamenti non disponibile'); return; }
     window.AppUpdate.check().then(found => { if (!found) toast(`Hai già l'ultima versione (${APP_VERSION})`); });
@@ -2180,7 +2252,7 @@ const params = new URLSearchParams(location.search);
 if (params.get('open')) { const it = getItem(params.get('open')); if (it) setTimeout(() => openForm(it, {}, params.get('occ') || nextOcc(it)), 300); history.replaceState(null, '', location.pathname); }
 
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
   navigator.serviceWorker.addEventListener('message', e => {
     if (e.data && e.data.type === 'open-item') { const it = getItem(e.data.id); if (it) openForm(it, {}, e.data.occ || nextOcc(it)); }
     if (e.data && e.data.type === 'push') checkReminders();
