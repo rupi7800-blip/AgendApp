@@ -63,25 +63,47 @@ self.addEventListener('fetch', e => {
 });
 
 // Tasto "Aggiorna": attiva subito un eventuale service worker nuovo
-const SW_VERSION = '2.0.1';
+const SW_VERSION = '2.1.0';
 self.addEventListener('message', e => {
   if (e.data && e.data.type === 'SKIP_WAITING') self.skipWaiting();
   // diagnostica: l'app chiede quale service worker è attivo e se gestisce le push
   if (e.data && e.data.type === 'ping' && e.source) e.source.postMessage({ type: 'pong', v: SW_VERSION, push: true });
 });
 
-/* ---------- Notifiche push: arrivano anche ad app chiusa ---------- */
+/* ---------- Notifiche push: arrivano anche ad app chiusa ----------
+   Avvisi "schermo intero": la notifica resta finché non rispondi, ha i tasti
+   Fatto / Tra 10 min e si ripete dopo 2, 5 e 10 minuti se la ignori.
+   Toccandola si apre AgendApp direttamente sull'avviso a tutto schermo. */
 const PUSH_LOG = 'pushlog-agendapp';
-async function remember(key) {
-  // annota gli avvisi mostrati: all'apertura l'app li mette nel centro notifiche e non li ripete
-  try {
-    const c = await caches.open(PUSH_LOG);
-    const r = await c.match('./__push-log');
-    const list = r ? await r.json() : [];
-    list.push(key);
-    await c.put('./__push-log', new Response(JSON.stringify(list.slice(-300)), { headers: { 'Content-Type': 'application/json' } }));
-  } catch (e) { /* ignora */ }
+const PUSH_URL = 'https://orwotjyfhpqasxpowvkt.supabase.co/functions/v1/agendapp-push';
+async function store() { return caches.open(PUSH_LOG); }
+async function readJSON(name, def) {
+  try { const r = await (await store()).match('./' + name); return r ? await r.json() : def; } catch (e) { return def; }
 }
+async function writeJSON(name, val) {
+  try { await (await store()).put('./' + name, new Response(JSON.stringify(val), { headers: { 'Content-Type': 'application/json' } })); } catch (e) { /* ignora */ }
+}
+// annota gli avvisi mostrati: all'apertura l'app li mette nel centro notifiche e non li ripete
+async function remember(key) {
+  const list = await readJSON('__push-log', []);
+  list.push(key);
+  await writeJSON('__push-log', list.slice(-300));
+}
+// azioni fatte dalla notifica (fatto, posticipa): l'app le applica quando si apre
+async function rememberAction(a) {
+  const list = await readJSON('__push-actions', []);
+  list.push(a);
+  await writeJSON('__push-actions', list.slice(-100));
+}
+async function server(body) {
+  const cred = await readJSON('__push-cred', null);
+  if (!cred || !cred.device) return;
+  try {
+    await fetch(PUSH_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ device: cred.device, token: cred.token }, body)) });
+  } catch (e) { /* offline: l'app riallinea quando si apre */ }
+}
+const baseKey = k => String(k || '').split('|z')[0].split('|r')[0];
+
 self.addEventListener('push', e => {
   let d = {};
   try { d = e.data ? e.data.json() : {}; } catch (err) { d = { t: 'AgendApp', b: e.data ? e.data.text() : '' }; }
@@ -92,27 +114,56 @@ self.addEventListener('push', e => {
     // app aperta davanti agli occhi: l'avviso lo mostra lei (schermo intero o banner)
     if (open && !test) { open.postMessage({ type: 'push', k: d.k }); return; }
     if (d.k && !test) await remember(d.k);
-    await self.registration.showNotification(d.t || 'AgendApp', {
-      body: d.b || '', tag: d.k || 'agendapp', renotify: true,
+    const actions = [];
+    if (d.req || d.c) {
+      if (d.c) actions.push({ action: 'done', title: '✓ ' + d.c });
+      actions.push({ action: 'snooze', title: '⏰ Tra 10 min' });
+      if (!d.c) actions.push({ action: 'ok', title: 'Ho capito' });
+    }
+    const tag = d.k ? baseKey(d.k) : 'agendapp';
+    await self.registration.showNotification((d.r ? '🔔 ' : '') + (d.t || 'AgendApp'), {
+      body: (d.r ? 'Promemoria ripetuto · ' : '') + (d.b || ''), tag, renotify: true,
       icon: 'icons/icon-192.png', badge: 'icons/icon-192.png',
       requireInteraction: !!d.req, silent: d.s === false,
-      vibrate: d.v ? [300, 120, 300, 120, 600] : undefined,
-      data: { id: d.id || '', occ: d.occ || '' }
+      vibrate: d.v ? (d.req ? [800, 300, 800, 300, 800, 300, 1200] : [300, 120, 300]) : undefined,
+      timestamp: Date.now(), actions,
+      data: { id: d.id || '', occ: d.occ || '', k: d.k || '', t: d.t || '', b: d.b || '', req: !!d.req, s: !!d.s, v: !!d.v, c: d.c || '' }
     });
   })());
 });
 
 self.addEventListener('notificationclick', e => {
   e.notification.close();
-  const data = e.notification.data || {}, id = data.id, occ = data.occ;
-  e.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
-      for (const c of list) {
-        c.focus();
-        if (id) c.postMessage({ type: 'open-item', id, occ });
-        return;
-      }
-      return self.clients.openWindow('./' + (id ? '?open=' + encodeURIComponent(id) + (occ ? '&occ=' + occ : '') : ''));
-    })
-  );
+  const data = e.notification.data || {}, id = data.id, occ = data.occ, k = data.k, base = baseKey(k);
+  const act = e.action || 'open';
+  e.waitUntil((async () => {
+    if (act === 'done') {
+      await rememberAction({ a: 'done', id, occ, k, at: Date.now() });
+      await server({ a: 'ack', keys: [`${id}|${occ}|`] });
+      return;
+    }
+    if (act === 'snooze') {
+      const at = Date.now() + 10 * 60000;
+      await rememberAction({ a: 'snooze', id, occ, k: base, at });
+      await server({ a: 'ack', keys: [base] });
+      await server({ a: 'snooze', k: base, at, p: { t: data.t, b: data.b, id, occ, req: data.req, s: data.s, v: data.v, c: data.c } });
+      return;
+    }
+    if (k) await server({ a: 'ack', keys: [base] });
+    if (act === 'ok' || !id) return;
+    // tocco sulla notifica: apre AgendApp sull'avviso a tutto schermo
+    const list = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const c of list) {
+      try { await c.focus(); } catch (err) { /* ignora */ }
+      c.postMessage({ type: 'open-alert', id, occ, k });
+      return;
+    }
+    await self.clients.openWindow('./?alert=' + encodeURIComponent(id) + '&occ=' + encodeURIComponent(occ || '') + '&k=' + encodeURIComponent(k || ''));
+  })());
+});
+
+// notifica scorsa via: l'hai vista, niente ripetizioni
+self.addEventListener('notificationclose', e => {
+  const k = (e.notification.data || {}).k;
+  if (k && !String(k).startsWith('test-')) e.waitUntil(server({ a: 'ack', keys: [baseKey(k)] }));
 });

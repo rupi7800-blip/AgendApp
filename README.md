@@ -44,6 +44,7 @@ arrivano anche con l'app chiusa o il telefono in standby, tramite Web Push:
 - l'app manda a un piccolo server (progetto Supabase `agendapp-push`, in Europa) titolo, orario e luogo dei promemoria dei prossimi 35 giorni, e li riaggiorna a ogni modifica;
 - ogni minuto il server invia quelli in scadenza (`supabase/functions/agendapp-push`, pianificato con `pg_cron`);
 - su iPhone funziona solo con AgendApp aggiunta alla schermata Home (iOS 16.4 o successivo).
+- gli avvisi *schermo intero* ad app chiusa sono notifiche che restano finché non rispondi, con i tasti **Fatto/Pagato** e **Tra 10 min**, e suonano di nuovo dopo 2, 5 e 10 minuti; toccandole si apre l'avviso a tutto schermo. Una vera schermata intera sopra il telefono bloccato (come la Sveglia) è riservata alle app native: le app web non possono aprirla da sole.
 
 Il resto dei dati resta sul dispositivo.
 
